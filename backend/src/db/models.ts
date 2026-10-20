@@ -8,10 +8,18 @@ import type { Collection, Db } from 'mongodb';
 import type { Timestamp } from './epoch.js';
 import type { Id } from './snowflake.js';
 
-/** Max length of free-text fields, so records fit in a 500-byte TLON message. */
+/**
+ * Max length of free-text fields, so records fit in a 500-byte TLON message.
+ * Counted on the wire (src/tdlp/text.ts), where a line break takes 2 characters.
+ */
 export const TEXT_MAX = 450;
+/** Comments travel with their author and date, so they get less room. */
+export const COMMENT_MAX = 400;
 /** Max length of board and list titles. */
 export const TITLE_MAX = 128;
+
+/** Bumped on every change (u32, from 1); LMP UPDATE/DELETE must name the current one. */
+export type Version = bigint;
 
 /** Single-line text (usernames, titles): printable ASCII only. */
 export const ASCII_LINE = /^[\x20-\x7E]*$/;
@@ -66,6 +74,7 @@ export interface Board {
   createdDate: Timestamp;
   /** Members other than the owner. */
   members: BoardMember[];
+  version: Version;
 }
 
 export interface List {
@@ -75,6 +84,7 @@ export interface List {
   createdBy: Id;
   createdDate: Timestamp;
   boardId: Id;
+  version: Version;
 }
 
 export interface Comment {
@@ -97,6 +107,7 @@ export interface Task {
   createdDate: Timestamp;
   listId: Id;
   comments?: Comment[];
+  version: Version;
 }
 
 /** See src/auth/sessions.ts. */
@@ -127,6 +138,15 @@ export function collections(db: Db): Collections {
     tasks: db.collection<Task>('Tasks'),
     sessions: db.collection<Session>('Sessions'),
   };
+}
+
+/** Gives documents from before versions existed version 1. Safe to re-run. */
+export async function addMissingVersions(db: Db): Promise<void> {
+  const c = collections(db);
+  const missing = { version: { $exists: false } };
+  await c.boards.updateMany(missing, { $set: { version: 1n } });
+  await c.lists.updateMany(missing, { $set: { version: 1n } });
+  await c.tasks.updateMany(missing, { $set: { version: 1n } });
 }
 
 export type Role = Permission | 'owner';

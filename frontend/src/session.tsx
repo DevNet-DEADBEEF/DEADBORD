@@ -12,6 +12,8 @@ interface Session {
   sessionKey: string | undefined;
   signIn(session: AuthSession): Promise<void>;
   signOut(): Promise<void>;
+  /** After the account changes (e.g. a new username). */
+  updateUser(user: User): void;
 }
 
 const SessionContext = createContext<Session | undefined>(undefined);
@@ -60,7 +62,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [apply, session]);
 
   return (
-    <SessionContext.Provider value={{ loading, user: session?.user, sessionKey: session?.key, signIn, signOut }}>
+    <SessionContext.Provider
+      value={{
+        loading,
+        user: session?.user,
+        sessionKey: session?.key,
+        signIn,
+        signOut,
+        updateUser: (user) => setSession((s) => (s ? { ...s, user } : s)),
+      }}
+    >
       {children}
     </SessionContext.Provider>
   );

@@ -6,7 +6,10 @@ import { completeLogin } from '@/auth/auth';
 import { useSession } from '@/session';
 import { styles } from '@/styles';
 
-/** Web: the server redirects here after a third-party login, with the session key in the fragment. */
+/**
+ * Web: the server redirects here after a third-party login (session key in
+ * the fragment) or after linking a provider to the account (#linked=...).
+ */
 export default function AuthCallbackScreen() {
   const { signIn } = useSession();
   const [error, setError] = useState<string>();
@@ -15,6 +18,10 @@ export default function AuthCallbackScreen() {
     const url = window.location.href;
     // Drop the key from the address bar and history.
     window.history.replaceState(null, '', window.location.pathname);
+    if (new URLSearchParams(url.split('#')[1] ?? '').has('linked')) {
+      router.replace('/boards');
+      return;
+    }
     completeLogin(url)
       .then(signIn)
       .then(() => router.replace('/boards'))

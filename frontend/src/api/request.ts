@@ -1,14 +1,17 @@
 /** HTTP requests to the backend, authenticated with the session key. */
 
 import { Platform } from 'react-native';
+import { desktop } from '@/desktop';
 
 /**
- * The backend's base URL. A production web build is served by the backend
- * itself (same origin); in development the Expo dev server serves the app, so
- * calls go to the backend on its own port.
+ * The backend's base URL. The desktop app is told it by Electron. A
+ * production web build is served by the backend itself (same origin); in
+ * development the Expo dev server serves the app, so calls go to the backend
+ * on its own port.
  */
 export const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' && !__DEV__ ? '' : 'http://localhost:3000')
+  desktop?.apiUrl ||
+  (process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' && !__DEV__ ? '' : 'http://localhost:3000'))
 ).replace(/\/$/, '');
 
 export class ApiError extends Error {

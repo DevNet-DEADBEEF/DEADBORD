@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@deadbord/lmp": "file:../TDLP/lmp",
+    "@deadbord/tdlp": "file:../TDLP/tdlp",
+    "@deadbord/tlon": "file:../TDLP/tlon",
     "@react-native-community/datetimepicker": "9.2.1",
     "expo": "~58.0.16",
     "expo-constants": "~58.0.12",
@@ -20,6 +23,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "electron": "^44.9.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
@@ -30,7 +34,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "desktop:compile": "tsc -p electron",
+    "desktop:dev": "npm run desktop:compile && electron dist-electron/main.js --dev-url=http://localhost:8081",
+    "desktop": "expo export --platform web && npm run desktop:compile && electron dist-electron/main.js"
   },
   "private": true
 }

@@ -36,7 +36,7 @@ export function firstDueDay(): Date {
 }
 
 /** All-day tasks are overdue once their day has passed; timed tasks once their time has. */
-export function isOverdue(task: Task): boolean {
+export function isOverdue(task: Pick<Task, 'done' | 'dueDate'>): boolean {
   if (task.done || task.dueDate == null) return false;
   const due = fromTimestamp(task.dueDate);
   const now = new Date();
@@ -51,6 +51,6 @@ export function formatDue(ts: Timestamp): string {
 }
 
 /** Overdue tasks first, then by due date; tasks with no due date last. */
-export function sortTasks(tasks: Task[]): Task[] {
+export function sortTasks<T extends Pick<Task, 'dueDate'>>(tasks: T[]): T[] {
   return [...tasks].sort((a, b) => (a.dueDate ?? Infinity) - (b.dueDate ?? Infinity));
 }

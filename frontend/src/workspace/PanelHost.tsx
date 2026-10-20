@@ -3,13 +3,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components';
 import { styles } from '@/styles';
 import { useIsWide, useWorkspace } from './context';
+import { AccountPanel } from './AccountPanel';
 import { MembersPanel } from './MembersPanel';
 import { TaskPanel } from './TaskPanel';
 
 export const PANEL_WIDTH = 400;
 
 /**
- * The open side panel (task details or members): a pane on the right of wide
+ * The open side panel (task details, members, account): a pane on the right of wide
  * windows, a modal sheet over the page on narrow ones.
  */
 export function PanelHost() {
@@ -18,12 +19,14 @@ export function PanelHost() {
   const insets = useSafeAreaInsets();
   if (!panel) return null;
 
-  const title = panel.kind === 'task' ? 'Task' : 'Members';
+  const title = { task: 'Task', members: 'Members', account: 'Account' }[panel.kind];
   const body =
     panel.kind === 'task' ? (
       <TaskPanel key={panel.taskId} taskId={panel.taskId} />
-    ) : (
+    ) : panel.kind === 'members' ? (
       <MembersPanel key={panel.boardId} boardId={panel.boardId} />
+    ) : (
+      <AccountPanel />
     );
   const header = (
     <View style={[styles.row, { justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }, styles.divider]}>

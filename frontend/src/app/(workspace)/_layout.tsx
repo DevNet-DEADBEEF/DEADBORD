@@ -6,12 +6,12 @@ import { Button } from '@/components';
 import { useSession } from '@/session';
 import { styles } from '@/styles';
 import { BoardTree } from '@/workspace/BoardTree';
-import { useIsWide, WorkspaceProvider } from '@/workspace/context';
+import { useIsWide, useWorkspace, WorkspaceProvider } from '@/workspace/context';
 import { PanelHost } from '@/workspace/PanelHost';
 
 /**
  * The logged-in workspace. Wide windows: board tree on the left, the page in
- * the middle, the open panel (task, members) on the right. Narrow windows:
+ * the middle, the open panel (task, members, account) on the right. Narrow windows:
  * the tree collapses at the top and panels open as modal sheets.
  */
 export default function WorkspaceLayout() {
@@ -60,7 +60,9 @@ function Shell() {
 
 function TopBar() {
   const { user, signOut } = useSession();
+  const { panel, openAccount, closePanel } = useWorkspace();
   const insets = useSafeAreaInsets();
+  const accountOpen = panel?.kind === 'account';
   return (
     <View
       style={[
@@ -71,9 +73,7 @@ function TopBar() {
     >
       <Text style={styles.title}>DEADBORD</Text>
       <View style={styles.row}>
-        <Text style={styles.muted} numberOfLines={1}>
-          {user?.username}
-        </Text>
+        <Button label={user?.username ?? 'Account'} size="small" selected={accountOpen} onPress={accountOpen ? closePanel : openAccount} />
         <Button label="Log out" size="small" onPress={() => signOut()} />
       </View>
     </View>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View, type ScrollViewInstance } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { client } from '@/api/client';
-import { can, PERMISSION_LABELS, TEXT_MAX, TITLE_MAX, type BoardView, type Id, type List, type Task } from '@/api/types';
+import { can, PERMISSION_LABELS, TEXT_MAX, TITLE_MAX, type BoardView, type Id, type List, type TaskSummary } from '@/api/types';
 import { Button, TextField } from '@/components';
 import { DateField } from '@/DateField';
 import { toTimestamp } from '@/epoch';
@@ -83,7 +83,7 @@ export default function BoardPage() {
   );
 }
 
-function ListCard({ list, canWrite, focused }: { list: List & { tasks: Task[] }; canWrite: boolean; focused: boolean }) {
+function ListCard({ list, canWrite, focused }: { list: List & { tasks: TaskSummary[] }; canWrite: boolean; focused: boolean }) {
   const { changed, openTask, panel } = useWorkspace();
   const [title, setTitle] = useState('');
   const [due, setDue] = useState<Date>();
@@ -100,7 +100,7 @@ function ListCard({ list, canWrite, focused }: { list: List & { tasks: Task[] };
     changed();
   }
 
-  const row = (task: Task) => (
+  const row = (task: TaskSummary) => (
     <TaskRow
       key={task.id}
       task={task}
@@ -111,7 +111,7 @@ function ListCard({ list, canWrite, focused }: { list: List & { tasks: Task[] };
     />
   );
 
-  async function toggleDone(task: Task) {
+  async function toggleDone(task: TaskSummary) {
     await client.updateTask(task.id, { done: !task.done });
     changed();
   }
@@ -161,7 +161,7 @@ function TaskRow({
   onToggle,
   onOpen,
 }: {
-  task: Task;
+  task: TaskSummary;
   canWrite: boolean;
   open: boolean;
   onToggle(): void;

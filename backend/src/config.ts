@@ -21,6 +21,13 @@ export interface Config {
   allowedRedirects: string[];
   corsOrigins: string[];
   oauth: Partial<Record<string, OAuthClient>>;
+  tdlp: {
+    /** UDP port for TDLP (data transfer); separate from the HTTP port. */
+    port: number;
+    host: string;
+    /** RSA private key (PEM) whose public half is built into clients. `npm run tdlp:keygen` makes a pair. */
+    privateKeyFile: string;
+  };
 }
 
 function list(value: string | undefined): string[] {
@@ -57,8 +64,13 @@ export function loadConfig(env = process.env): Config {
     allowedRedirects: env.ALLOWED_REDIRECTS
       ? list(env.ALLOWED_REDIRECTS)
       : [`${publicUrl}/auth/callback`, 'http://localhost:8081/auth/callback', 'deadbord://auth'],
-    // Default: the Expo web dev server (`npm run web` in frontend/).
-    corsOrigins: env.CORS_ORIGINS === undefined ? ['http://localhost:8081'] : list(env.CORS_ORIGINS),
+    // Default: the Expo web dev server (`npm run web` in frontend/) and the desktop app.
+    corsOrigins: env.CORS_ORIGINS === undefined ? ['http://localhost:8081', 'app://deadbord'] : list(env.CORS_ORIGINS),
     oauth,
+    tdlp: {
+      port: Number(env.TDLP_PORT ?? 3001),
+      host: env.TDLP_HOST ?? env.HOST ?? '0.0.0.0',
+      privateKeyFile: resolve(env.TDLP_PRIVATE_KEY_FILE ?? 'tdlp-private.pem'),
+    },
   };
 }

@@ -1,7 +1,8 @@
 /**
  * HTTP server: serves the exported web app and the auth endpoints. Every
  * login ends by issuing a session key (src/auth/sessions.ts), which HTTP
- * clients send as `Authorization: Bearer <16 hex digits>`.
+ * clients send as `Authorization: Bearer <16 hex digits>`. Boards, lists and
+ * tasks travel over TDLP instead (src/tdlp/).
  */
 
 import { existsSync } from 'node:fs';
@@ -10,9 +11,9 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import type { Db } from 'mongodb';
 import { authorizeUrl, fetchIdentity, isProvider, openState, PROVIDERS } from '../auth/oauth.js';
-import { registerApi } from './api.js';
-import { SessionStore, type IssuedSession, type ResolvedSession, type SessionKey } from '../auth/sessions.js';
-import { findByUsername, isValidUsername, randomUser, loginWithIdentity, signupWithUsername, UsernameTakenError } from '../auth/users.js';
+import { registerAccount } from './account.js';
+import { formatKey, parseKey, SessionStore, type IssuedSession, type ResolvedSession, type SessionKey } from '../auth/sessions.js';
+import { findByUsername, IdentityInUseError, isValidUsername, linkIdentity, randomUser, loginWithIdentity, signupWithUsername, UsernameTakenError } from '../auth/users.js';
 import type { Config } from '../config.js';
 import { AUTH_TYPES, collections, type AuthType, type User } from '../db/models.js';
 
@@ -22,14 +23,6 @@ interface SessionResponse {
   key: string;
   expiresDate: number;
   user: { id: string; username: string };
-}
-
-function formatKey(key: SessionKey): string {
-  return key.toString(16).padStart(16, '0');
-}
-
-function parseKey(text: string | undefined): SessionKey | undefined {
-  return text && /^[0-9a-f]{16}$/i.test(text) ? BigInt(`0x${text}`) : undefined;
 }
 
 function publicUser(user: User): SessionResponse['user'] {
@@ -156,10 +149,15 @@ export async function buildServer(db: Db, config: Config) {
           code: req.query.code,
           verifier: state.verifier,
         });
+        if (state.linkUser) {
+          await linkIdentity(db, BigInt(state.linkUser), state.provider, identity);
+          return finish({ linked: state.provider });
+        }
         const user = await loginWithIdentity(db, state.provider, identity);
         const issued = await sessions.issue(user._id);
         return finish({ key: formatKey(issued.key), expiresDate: String(issued.expiresDate) });
       } catch (err) {
+        if (err instanceof IdentityInUseError) return finish({ error: err.message });
         req.log.error(err);
         return finish({ error: 'Login failed' });
       }
@@ -193,7 +191,7 @@ export async function buildServer(db: Db, config: Config) {
     return reply.code(204).send();
   });
 
-  registerApi(app, db, authenticate);
+  registerAccount(app, db, { authenticate, sessions, config });
 
   if (existsSync(config.staticDir)) {
     await app.register(fastifyStatic, { root: config.staticDir });

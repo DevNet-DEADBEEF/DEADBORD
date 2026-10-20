@@ -10,6 +10,8 @@ const conn = connect(`mongodb://${user}:${pass}@${process.env.MONGO_HOST}/${proc
 // Unsigned 32-bit seconds since the DEADBORD epoch (2026-10-18T06:00Z).
 const date = { bsonType: 'long', minimum: 0, maximum: 4294967295 };
 const id = { bsonType: 'long' };
+// u32, bumped on every change; LMP UPDATE/DELETE must name the current version.
+const version = { bsonType: 'long', minimum: 1, maximum: 4294967295 };
 // Free text is capped at 450 characters so records fit in a 500-byte TLON message.
 const TEXT_MAX = 450;
 // Text is ASCII only: printable characters, plus tab/newlines in multi-line fields.
@@ -56,7 +58,7 @@ const schemas = {
   Bords: {
     bsonType: 'object',
     title: 'Board',
-    required: ['_id', 'title', 'createdBy', 'createdDate', 'members'],
+    required: ['_id', 'title', 'createdBy', 'createdDate', 'members', 'version'],
     additionalProperties: false,
     properties: {
       _id: id,
@@ -76,12 +78,13 @@ const schemas = {
           },
         },
       },
+      version,
     },
   },
   Lists: {
     bsonType: 'object',
     title: 'Task List',
-    required: ['_id', 'title', 'createdBy', 'createdDate', 'boardId'],
+    required: ['_id', 'title', 'createdBy', 'createdDate', 'boardId', 'version'],
     additionalProperties: false,
     properties: {
       _id: id,
@@ -89,12 +92,13 @@ const schemas = {
       createdBy: id,
       createdDate: date,
       boardId: id,
+      version,
     },
   },
   Tasks: {
     bsonType: 'object',
     title: 'Task Data',
-    required: ['_id', 'title', 'done', 'createdBy', 'createdDate', 'listId'],
+    required: ['_id', 'title', 'done', 'createdBy', 'createdDate', 'listId', 'version'],
     additionalProperties: false,
     properties: {
       _id: id,
@@ -119,6 +123,7 @@ const schemas = {
           },
         },
       },
+      version,
     },
   },
 };
@@ -153,10 +158,18 @@ const indexes = {
 };
 
 const existing = new Set(conn.getCollectionNames());
+
 for (const [name, schema] of Object.entries(schemas)) {
   const validation = { validator: { $jsonSchema: schema }, validationLevel: 'strict', validationAction: 'error' };
   if (existing.has(name)) conn.runCommand({ collMod: name, ...validation });
   else conn.createCollection(name, validation);
   for (const [keys, options] of indexes[name]) conn[name].createIndex(keys, options);
   print(`${name}: validator applied, indexes ${JSON.stringify(conn[name].getIndexes().map((i) => i.key))}`);
+}
+
+// Documents from before versions existed start at version 1. This runs after
+// the validators above, which allow (and require) the field.
+for (const name of ['Bords', 'Lists', 'Tasks']) {
+  const { modifiedCount } = conn[name].updateMany({ version: { $exists: false } }, { $set: { version: NumberLong('1') } });
+  if (modifiedCount) print(`${name}: set version 1 on ${modifiedCount} document(s)`);
 }

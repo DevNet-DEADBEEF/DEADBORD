@@ -46,6 +46,15 @@ export interface IssuedSession {
   expiresDate: Timestamp;
 }
 
+/** A key as clients see it: 16 hex digits. */
+export function formatKey(key: SessionKey): string {
+  return key.toString(16).padStart(16, '0');
+}
+
+export function parseKey(text: string | undefined): SessionKey | undefined {
+  return text && /^[0-9a-f]{16}$/i.test(text) ? BigInt(`0x${text}`) : undefined;
+}
+
 function generateKey(): SessionKey {
   let key: SessionKey;
   do key = randomBytes(8).readBigUInt64BE();

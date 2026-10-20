@@ -43,6 +43,23 @@ export async function signupWithUsername(db: Db, username: string): Promise<User
   }
 }
 
+export class IdentityInUseError extends Error {}
+
+/** Links a third-party identity to an existing user (replacing any earlier link to the same provider). */
+export async function linkIdentity(
+  db: Db,
+  userId: User['_id'],
+  provider: AuthType,
+  identity: { subject: string },
+): Promise<void> {
+  const users = collections(db).users;
+  const subject = `${provider}:${identity.subject}`;
+  const owner = await users.findOne({ 'credentials.data.subject': subject }, { projection: { _id: 1 } });
+  if (owner && owner._id !== userId) throw new IdentityInUseError('That account is already linked to another user');
+  await users.updateOne({ _id: userId }, { $pull: { credentials: { type: provider } } });
+  await users.updateOne({ _id: userId }, { $push: { credentials: credential(provider, 'has', { subject }) } });
+}
+
 /** Turns a provider display name into a valid username stem. */
 function usernameStem(name: string | undefined): string {
   const ascii = (name ?? '')

@@ -25,7 +25,7 @@ export function BoardTree({ onNavigate }: { onNavigate?(): void }) {
       try {
         const summaries = await client.listBoards();
         const withLists = await Promise.all(
-          summaries.map(async (s) => ({ ...s, lists: (await client.getBoard(s.board.id)).lists })),
+          summaries.map(async (s) => ({ ...s, lists: await client.getLists(s.board.id) })),
         );
         if (!cancelled) {
           setBoards(withLists);

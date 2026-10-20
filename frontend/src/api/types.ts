@@ -1,6 +1,6 @@
 /**
- * Wire shapes for the backend models (backend/src/db/models.ts).
- * IDs are 64-bit snowflakes, sent as decimal strings because they exceed
+ * App shapes for the backend models (backend/src/db/models.ts).
+ * IDs are 64-bit snowflakes, kept as decimal strings because they exceed
  * Number.MAX_SAFE_INTEGER. Dates are Timestamps: u32 seconds since the
  * DEADBORD epoch (see src/epoch.ts).
  */
@@ -9,8 +9,13 @@ import type { Timestamp } from '@/epoch';
 
 export type Id = string;
 
-/** Max length of free-text fields (task title/desc, comments). */
+/**
+ * Max length of free-text fields (task title and desc). The server counts
+ * line breaks as 2 characters (see src/api/text.ts).
+ */
 export const TEXT_MAX = 450;
+/** Max length of a comment, counted the same way. */
+export const COMMENT_MAX = 400;
 /** Max length of board and list titles. */
 export const TITLE_MAX = 128;
 
@@ -56,6 +61,7 @@ export interface List {
 }
 
 export interface Comment {
+  /** Unique within its task. */
   id: Id;
   text: string;
   createdBy: Id;
@@ -79,9 +85,12 @@ export interface BoardSummary {
   role: Role;
 }
 
-/** A board with all of its contents, fetched in one go. */
+/** What the board screen shows of each task. */
+export type TaskSummary = Pick<Task, 'id' | 'title' | 'dueDate' | 'done' | 'listId'>;
+
+/** A board with all of its contents. */
 export interface BoardView extends BoardSummary {
-  lists: (List & { tasks: Task[] })[];
+  lists: (List & { tasks: TaskSummary[] })[];
 }
 
 export interface TaskView {

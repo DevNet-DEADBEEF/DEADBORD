@@ -10,7 +10,8 @@
  *   "Home Projects", one list and three tasks each.
  */
 
-import { randomBytes, randomInt, scryptSync } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
+import { hashSecret } from '../auth/credentials.js';
 import { connect, disconnect } from '../db/connection.js';
 import { now, toTimestamp, type Timestamp } from '../db/epoch.js';
 import {
@@ -29,12 +30,6 @@ type TaskSeed = Pick<Task, 'title' | 'done'> & Partial<Pick<Task, 'desc' | 'dueD
 const db = await connect();
 const c = collections(db);
 const created = now();
-
-/** scrypt hash for knowledge factors (password, pin, security answer). */
-function hashSecret(secret: string): { hash: string; salt: string } {
-  const salt = randomBytes(16);
-  return { hash: scryptSync(secret, salt, 32).toString('hex'), salt: salt.toString('hex') };
-}
 
 /** Local midnight `days` from today, matching how the app stores due dates. */
 function dueIn(days: number): Timestamp {
@@ -61,8 +56,8 @@ async function seedUser(username: string, extra: AuthObject[]): Promise<User> {
     createdDate: created,
     credentials: [
       credential('username', 'knows'),
-      credential('password', 'knows', hashSecret(password)),
-      credential('pin', 'knows', hashSecret(pin)),
+      credential('password', 'knows', { password: hashSecret(password) }),
+      credential('pin', 'knows', { pin: hashSecret(pin) }),
       ...extra,
     ],
   };
@@ -88,11 +83,11 @@ async function seedBoard(
     console.log(`Board "${title}" already exists (${existing._id})`);
     return;
   }
-  const board: Board = { _id: ids.next(), title, createdBy: owner._id, createdDate: created, members };
+  const board: Board = { _id: ids.next(), title, createdBy: owner._id, createdDate: created, members, version: 1n };
   const listDocs: List[] = [];
   const taskDocs: Task[] = [];
   for (const l of lists) {
-    const list: List = { _id: ids.next(), title: l.title, createdBy: owner._id, createdDate: created, boardId: board._id };
+    const list: List = { _id: ids.next(), title: l.title, createdBy: owner._id, createdDate: created, boardId: board._id, version: 1n };
     listDocs.push(list);
     for (const { comments = [], ...t } of l.tasks) {
       taskDocs.push({
@@ -102,6 +97,7 @@ async function seedBoard(
         createdDate: created,
         listId: list._id,
         comments: comments.map((text) => ({ _id: ids.next(), text, createdBy: owner._id, createdDate: created })),
+        version: 1n,
       });
     }
   }
@@ -119,7 +115,7 @@ function member(user: User, permission: BoardMember['permission']): BoardMember 
 // --- pilot1782 -------------------------------------------------------------
 
 const pilot1782 = await seedUser('pilot1782', [
-  credential('security_question', 'knows', { question: 'What is the best todo app?', ...hashSecret('DEADBORD') }),
+  credential('security_question', 'knows', { question: 'What is the best todo app?', answer: hashSecret('DEADBORD') }),
   credential('favorite_color', 'knows', { color: '#1e90ff' }),
   credential('birthday', 'knows', { birthday: '1990-01-01' }),
   credential('blood_type', 'is', { bloodType: 'O+' }),

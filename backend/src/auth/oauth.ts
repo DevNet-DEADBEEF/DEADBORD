@@ -71,6 +71,8 @@ interface State {
   verifier: string;
   redirect: string;
   expires: number;
+  /** Set when linking the provider to an existing user instead of logging in. */
+  linkUser?: string;
 }
 
 function base64url(buf: Buffer): string {
@@ -105,7 +107,7 @@ export function callbackUrl(publicUrl: string, provider: ProviderName): string {
 export function authorizeUrl(
   provider: ProviderName,
   client: OAuthClient,
-  opts: { publicUrl: string; secret: Buffer; redirect: string },
+  opts: { publicUrl: string; secret: Buffer; redirect: string; linkUser?: string },
 ): string {
   const verifier = base64url(randomBytes(32));
   const p = PROVIDERS[provider];
@@ -115,7 +117,10 @@ export function authorizeUrl(
     client_id: client.clientId,
     redirect_uri: callbackUrl(opts.publicUrl, provider),
     scope: p.scope,
-    state: sealState({ provider, verifier, redirect: opts.redirect, expires: Date.now() + STATE_TTL_MS }, opts.secret),
+    state: sealState(
+      { provider, verifier, redirect: opts.redirect, expires: Date.now() + STATE_TTL_MS, linkUser: opts.linkUser },
+      opts.secret,
+    ),
     code_challenge: base64url(createHash('sha256').update(verifier).digest()),
     code_challenge_method: 'S256',
   }).toString();

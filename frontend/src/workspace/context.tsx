@@ -8,12 +8,13 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { useWindowDimensions } from 'react-native';
 import type { Id } from '@/api/types';
 
-export type Panel = { kind: 'task'; taskId: Id } | { kind: 'members'; boardId: Id };
+export type Panel = { kind: 'task'; taskId: Id } | { kind: 'members'; boardId: Id } | { kind: 'account' };
 
 interface Workspace {
   panel: Panel | undefined;
   openTask(taskId: Id): void;
   openMembers(boardId: Id): void;
+  openAccount(): void;
   closePanel(): void;
   /** Bumped after any edit; panes reload when it changes. */
   version: number;
@@ -36,6 +37,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       panel,
       openTask: (taskId) => setPanel({ kind: 'task', taskId }),
       openMembers: (boardId) => setPanel({ kind: 'members', boardId }),
+      openAccount: () => setPanel({ kind: 'account' }),
       closePanel: () => setPanel(undefined),
       version,
       changed,

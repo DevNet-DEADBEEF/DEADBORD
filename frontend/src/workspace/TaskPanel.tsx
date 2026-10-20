@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { client } from '@/api/client';
-import { can, TEXT_MAX, type Id, type TaskView } from '@/api/types';
+import { can, COMMENT_MAX, TEXT_MAX, type Id, type TaskView } from '@/api/types';
 import { Button, TextField } from '@/components';
 import { DateField } from '@/DateField';
 import { fromTimestamp, toTimestamp } from '@/epoch';
@@ -129,13 +129,13 @@ export function TaskPanel({ taskId }: { taskId: Id }) {
         <View key={c.id} style={styles.card}>
           <Text>{c.text}</Text>
           <Text style={styles.muted}>
-            {usernames[c.createdBy] ?? 'unknown'} · {formatDateTime(c.createdDate)}
+            {usernames[c.createdBy] ?? 'deleted user'} · {formatDateTime(c.createdDate)}
           </Text>
         </View>
       ))}
       {can(role, 'read_comment') ? (
         <View style={styles.row}>
-          <TextField style={styles.grow} placeholder="Add a comment" maxLength={TEXT_MAX} value={comment} onChangeText={setComment} />
+          <TextField style={styles.grow} placeholder="Add a comment" maxLength={COMMENT_MAX} value={comment} onChangeText={setComment} />
           <Button
             label="Comment"
             disabled={!comment.trim()}

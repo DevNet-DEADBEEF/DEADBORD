@@ -15,7 +15,7 @@ export function MembersPanel({ boardId }: { boardId: Id }) {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    client.getBoard(boardId).then((v) => setBoard(v.board), (e: Error) => setError(e.message));
+    client.getBoardSummary(boardId).then((v) => setBoard(v.board), (e: Error) => setError(e.message));
   }, [boardId, version]);
 
   if (!board) return <Text style={styles.muted}>{error ?? 'Loading…'}</Text>;

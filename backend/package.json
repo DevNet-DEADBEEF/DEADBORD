@@ -11,13 +11,17 @@
     "start": "node --env-file=.env dist/index.js",
     "dev": "tsc && node --env-file=.env dist/index.js",
     "db:seed": "tsc && node --env-file=.env dist/scripts/seed.js",
-    "build:web": "cd ../frontend && npx expo export --platform web"
+    "build:web": "cd ../frontend && npx expo export --platform web",
+    "tdlp:keygen": "tsc && node --env-file-if-exists=.env dist/scripts/tdlp-keygen.js"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@deadbord/lmp": "file:../TDLP/lmp",
+    "@deadbord/tdlp": "file:../TDLP/tdlp",
+    "@deadbord/tlon": "file:../TDLP/tlon",
     "@fastify/cors": "^11.3.1",
     "@fastify/static": "^10.1.6",
     "fastify": "^5.12.7",
