@@ -1,3 +1,4 @@
+import { CreditCard, Wallet } from 'lucide-react-native';
 import { View } from 'react-native';
 import { TextField } from '@/components';
 import { styles } from '@/styles';
@@ -8,6 +9,7 @@ export function cardMethod(type: 'credit_card' | 'debit_card', label: string) {
   return defineMethod({
     type,
     label,
+    icon: type === 'credit_card' ? CreditCard : Wallet,
     kind: 'form',
     initial: { number: '', cvv: '', exp: '' },
     Input: ({ value, onChange }) => (

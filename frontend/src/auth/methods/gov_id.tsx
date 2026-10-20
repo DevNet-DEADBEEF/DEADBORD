@@ -1,3 +1,4 @@
+import { IdCard } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
@@ -5,6 +6,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'gov_id',
   label: 'Government ID',
+  icon: IdCard,
   kind: 'form',
   initial: { idNumber: '' },
   Input: ({ value, onChange }) => (

@@ -1,3 +1,4 @@
+import { Mail } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
@@ -5,6 +6,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'email',
   label: 'Email',
+  icon: Mail,
   kind: 'form',
   initial: { email: '' },
   Input: ({ value, onChange }) => (
@@ -19,5 +21,5 @@ export default defineMethod({
     />
   ),
   isValid: (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email),
-  note: "We'll email you a verification link.",
+  note: "We'll email you a 6-digit code.",
 });

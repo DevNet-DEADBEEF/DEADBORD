@@ -1,3 +1,4 @@
+import { ShieldQuestionMark } from 'lucide-react-native';
 import { View } from 'react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
@@ -6,6 +7,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'security_question',
   label: 'Security Question',
+  icon: ShieldQuestionMark,
   kind: 'form',
   initial: { question: '', answer: '' },
   Input: ({ value, onChange }) => (

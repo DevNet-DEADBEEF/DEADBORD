@@ -1,3 +1,4 @@
+import { Timer } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text } from 'react-native';
 import { defineMethod, type MethodInputProps } from './types';
@@ -58,6 +59,7 @@ function ReactionTest({ value, onChange }: MethodInputProps<Value>) {
 export default defineMethod<Value>({
   type: 'reaction_time',
   label: 'Reaction Time',
+  icon: Timer,
   kind: 'form',
   initial: { ms: undefined },
   Input: ReactionTest,

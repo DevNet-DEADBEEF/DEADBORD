@@ -1,3 +1,4 @@
+import { Receipt } from 'lucide-react-native';
 import { View } from 'react-native';
 import { TextField } from '@/components';
 import { styles } from '@/styles';
@@ -7,6 +8,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'billing_address',
   label: 'Billing Address',
+  icon: Receipt,
   kind: 'form',
   initial: { street: '', city: '', state: '', zip: '' },
   Input: ({ value, onChange }) => (

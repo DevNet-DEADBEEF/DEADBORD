@@ -1,3 +1,4 @@
+import { Cake } from 'lucide-react-native';
 import { DateField } from '@/DateField';
 import { defineMethod } from './types';
 
@@ -12,6 +13,7 @@ function isoDay(date: Date): string {
 export default defineMethod<{ birthday: Date | undefined }>({
   type: 'birthday',
   label: 'Birthday',
+  icon: Cake,
   kind: 'form',
   initial: { birthday: undefined },
   Input: ({ value, onChange }) => (

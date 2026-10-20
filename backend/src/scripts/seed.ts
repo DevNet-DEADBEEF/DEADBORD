@@ -11,7 +11,8 @@
  */
 
 import { randomBytes, randomInt } from 'node:crypto';
-import { hashSecret } from '../auth/credentials.js';
+import { buildCredential } from '../auth/credentials.js';
+import { loadConfig } from '../config.js';
 import { connect, disconnect } from '../db/connection.js';
 import { now, toTimestamp, type Timestamp } from '../db/epoch.js';
 import {
@@ -27,6 +28,8 @@ import { ids } from '../db/snowflake.js';
 
 type TaskSeed = Pick<Task, 'title' | 'done'> & Partial<Pick<Task, 'desc' | 'dueDate'>> & { comments?: string[] };
 
+// Secrets' lookup hashes are keyed with AUTH_SECRET, so seed with the server's.
+const { authSecret } = loadConfig();
 const db = await connect();
 const c = collections(db);
 const created = now();
@@ -37,8 +40,8 @@ function dueIn(days: number): Timestamp {
   return toTimestamp(new Date(d.getFullYear(), d.getMonth(), d.getDate() + days));
 }
 
-function credential(type: AuthObject['type'], mfa: AuthObject['mfa'], data?: AuthObject['data']): AuthObject {
-  return data ? { type, createdDate: created, mfa, data } : { type, createdDate: created, mfa };
+function credential(type: AuthObject['type'], input: Record<string, unknown> = {}): AuthObject {
+  return { ...buildCredential(type, input, authSecret), createdDate: created };
 }
 
 /** Creates a user enrolled in username, password and PIN plus `extra`; prints the generated secrets once. */
@@ -55,9 +58,9 @@ async function seedUser(username: string, extra: AuthObject[]): Promise<User> {
     username,
     createdDate: created,
     credentials: [
-      credential('username', 'knows'),
-      credential('password', 'knows', { password: hashSecret(password) }),
-      credential('pin', 'knows', { pin: hashSecret(pin) }),
+      credential('username'),
+      credential('password', { password }),
+      credential('pin', { pin }),
       ...extra,
     ],
   };
@@ -115,11 +118,17 @@ function member(user: User, permission: BoardMember['permission']): BoardMember 
 // --- pilot1782 -------------------------------------------------------------
 
 const pilot1782 = await seedUser('pilot1782', [
-  credential('security_question', 'knows', { question: 'What is the best todo app?', answer: hashSecret('DEADBORD') }),
-  credential('favorite_color', 'knows', { color: '#1e90ff' }),
-  credential('birthday', 'knows', { birthday: '1990-01-01' }),
-  credential('blood_type', 'is', { bloodType: 'O+' }),
-  credential('phone', 'has', { phone: '+1-555-0100' }),
+  credential('security_question', { question: 'What is the best todo app?', answer: 'DEADBORD' }),
+  credential('favorite_color', { color: '#1e90ff' }),
+  credential('birthday', { birthday: '1990-01-01' }),
+  credential('blood_type', { bloodType: 'O+' }),
+  credential('phone', { phone: '+1-555-555-0100' }),
+  credential('slider', { position: 500 }),
+  credential('reaction_time', { ms: 250 }),
+  // Fort Collins, CO.
+  credential('coordinates', { lat: 40.5734, lng: -105.0865 }),
+  credential('paragraph', { paragraph: 'I build network protocols and todo apps, and I fly small airplanes on weekends.' }),
+  credential('gov_id', { idNumber: 'TEST1782' }),
 ]);
 
 await seedBoard(pilot1782, 'Test Board', [
@@ -152,9 +161,11 @@ await seedBoard(pilot1782, 'Test Board', [
 // --- pilot1783 -------------------------------------------------------------
 
 const pilot1783 = await seedUser('pilot1783', [
-  credential('favorite_color', 'knows', { color: '#2ecc71' }),
-  credential('blood_type', 'is', { bloodType: 'A-' }),
-  credential('phone', 'has', { phone: '+1-555-0101' }),
+  credential('favorite_color', { color: '#2ecc71' }),
+  credential('blood_type', { bloodType: 'A-' }),
+  credential('phone', { phone: '+1-555-555-0101' }),
+  credential('reaction_time', { ms: 310 }),
+  credential('paragraph', { paragraph: 'I cook big dinners for friends, grow tomatoes in my garden, and fix old bicycles.' }),
 ]);
 
 await seedBoard(

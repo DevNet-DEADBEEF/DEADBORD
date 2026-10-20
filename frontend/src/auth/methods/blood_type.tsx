@@ -1,3 +1,4 @@
+import { Droplet } from 'lucide-react-native';
 import { View } from 'react-native';
 import { Choice } from '@/components';
 import { styles } from '@/styles';
@@ -9,6 +10,7 @@ const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 export default defineMethod({
   type: 'blood_type',
   label: 'Blood Type',
+  icon: Droplet,
   kind: 'form',
   initial: { bloodType: '' },
   Input: ({ value, onChange }) => (

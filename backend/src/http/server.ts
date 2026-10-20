@@ -1,7 +1,8 @@
 /**
  * HTTP server: serves the exported web app and the auth endpoints. Every
  * login ends by issuing a session key (src/auth/sessions.ts), which HTTP
- * clients send as `Authorization: Bearer <16 hex digits>`. Boards, lists and
+ * clients send as `Authorization: Bearer <16 hex digits>`. Login methods
+ * are matched in src/auth/login.ts. Boards, lists and
  * tasks travel over TDLP instead (src/tdlp/).
  */
 
@@ -12,8 +13,14 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import type { Db } from 'mongodb';
 import { authorizeUrl, fetchIdentity, isProvider, openState, PROVIDERS } from '../auth/oauth.js';
 import { registerAccount } from './account.js';
+import { registerTiles } from './tiles.js';
 import { formatKey, parseKey, SessionStore, type IssuedSession, type ResolvedSession, type SessionKey } from '../auth/sessions.js';
-import { findByUsername, IdentityInUseError, isValidUsername, linkIdentity, randomUser, loginWithIdentity, signupWithUsername, UsernameTakenError } from '../auth/users.js';
+import { buildCredential, CredentialError, parseFields } from '../auth/credentials.js';
+import { findMatches } from '../auth/login.js';
+import { createMailer } from '../auth/mail.js';
+import { providerForEmail } from '../auth/sso.js';
+import { findByUsername, IdentityInUseError, isValidUsername, linkIdentity, randomUser, loginWithIdentity, signupWith, UsernameTakenError } from '../auth/users.js';
+import { issueTicket, requireEmailCode, VerificationError } from '../auth/verification.js';
 import type { Config } from '../config.js';
 import { AUTH_TYPES, collections, type AuthType, type User } from '../db/models.js';
 
@@ -37,6 +44,7 @@ export async function buildServer(db: Db, config: Config) {
   const app = Fastify({ logger: true });
   const sessions = new SessionStore(db);
   const users = collections(db).users;
+  const mailer = createMailer(config, app.log);
 
   if (config.corsOrigins.length) {
     await app.register(cors, { origin: config.corsOrigins, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'] });
@@ -59,21 +67,47 @@ export async function buildServer(db: Db, config: Config) {
 
   const USERNAME_RULES = 'Usernames are 1-32 printable ASCII characters';
 
+  /** What a login says when it matches no one. */
+  const NO_MATCH: Partial<Record<AuthType, string>> = {
+    gov_id: 'No one has enrolled a government ID yet',
+    coordinates: 'No one lives within a mile of there',
+    reaction_time: 'No one has enrolled a reaction time yet',
+    paragraph: "That doesn't sound like anyone",
+  };
+
   function isAuthType(method: unknown): method is AuthType {
     return typeof method === 'string' && (AUTH_TYPES as readonly string[]).includes(method);
   }
 
   /**
-   * Logs in with any non-OAuth method. Methods that can match several users
-   * reply { candidates } instead; the client asks which one they are and
-   * repeats the request with that userId.
+   * Sends an email code when a method needs one (see requireEmailCode) and
+   * replies 202 { codeSent, to }; the client repeats the request with the
+   * code. Returns whether it replied.
+   */
+  async function sentEmailCode(method: AuthType, data: unknown, reply: FastifyReply): Promise<boolean> {
+    if (method !== 'email') return false;
+    const to = await requireEmailCode(db, config.authSecret, mailer, data);
+    if (to === undefined) return false;
+    await reply.code(202).send({ codeSent: true, to });
+    return true;
+  }
+
+  /**
+   * Logs in with any non-OAuth method (src/auth/login.ts). Methods that can
+   * match several users reply { candidates } instead; the client asks which
+   * one they are and repeats the request with that userId.
    */
   app.post<{ Body: { method?: unknown; data?: Record<string, unknown>; userId?: unknown } }>(
     '/auth/login',
     async (req, reply) => {
-      const { method, data } = req.body ?? {};
+      const { method, data, userId } = req.body ?? {};
       if (!isAuthType(method)) return reply.code(400).send({ error: 'Unknown login method' });
       if (isProvider(method)) return reply.code(400).send({ error: `Use /auth/oauth/${method}/start` });
+      if (method === 'sso') return reply.code(400).send({ error: 'Use /auth/sso to find your provider' });
+      if (userId !== undefined && (typeof userId !== 'string' || !/^\d{1,20}$/.test(userId))) {
+        return reply.code(400).send({ error: 'Bad userId' });
+      }
+      const chosen = userId === undefined ? undefined : BigInt(userId);
 
       if (method === 'username') {
         const username = data?.username;
@@ -89,8 +123,20 @@ export async function buildServer(db: Db, config: Config) {
         return sessionResponse(await sessions.issue(user._id), user);
       }
 
-      // TODO: the remaining methods from the Login Methods page.
-      return reply.code(501).send({ error: `Logging in with ${method} isn't available yet` });
+      try {
+        if (await sentEmailCode(method, data, reply)) return reply;
+        const matches = await findMatches(db, config.authSecret, method, data, chosen);
+        if (!matches.length) return reply.code(404).send({ error: NO_MATCH[method] ?? 'No one matches that' });
+        if (matches.length > 1) {
+          const { email } = method === 'email' ? (parseFields('email', data) as { email: string }) : {};
+          return { candidates: matches.map(publicUser), ...(email && { ticket: issueTicket(config.authSecret, email) }) };
+        }
+        return sessionResponse(await sessions.issue(matches[0]._id), matches[0]);
+      } catch (err) {
+        if (err instanceof CredentialError) return reply.code(400).send({ error: err.message });
+        if (err instanceof VerificationError) return reply.code(err.status).send({ error: err.message });
+        throw err;
+      }
     },
   );
 
@@ -98,28 +144,40 @@ export async function buildServer(db: Db, config: Config) {
   app.post<{ Body: { username?: unknown; method?: unknown; data?: Record<string, unknown> } }>(
     '/auth/signup',
     async (req, reply) => {
-      const { username, method } = req.body ?? {};
+      const { username, method, data } = req.body ?? {};
       if (!isAuthType(method)) return reply.code(400).send({ error: 'Unknown login method' });
       if (typeof username !== 'string' || !isValidUsername(username)) return reply.code(400).send({ error: USERNAME_RULES });
-
-      if (method === 'username') {
-        try {
-          const user = await signupWithUsername(db, username);
-          return sessionResponse(await sessions.issue(user._id), user);
-        } catch (err) {
-          if (err instanceof UsernameTakenError) return reply.code(409).send({ error: err.message });
-          throw err;
-        }
+      if (method === 'lucky') return reply.code(400).send({ error: "You can't sign up by feeling lucky" });
+      if (isProvider(method) || method === 'sso') {
+        return reply.code(400).send({ error: 'Sign up with that provider by logging in with it' });
       }
 
-      if (method === 'lucky') return reply.code(400).send({ error: "You can't sign up by feeling lucky" });
-
-      // TODO: enrolling in the remaining methods.
-      return reply.code(501).send({ error: `Signing up with ${method} isn't available yet` });
+      try {
+        const enrolled = buildCredential(method, data, config.authSecret);
+        if (await findByUsername(db, username)) return reply.code(409).send({ error: `${username} is taken` });
+        if (await sentEmailCode(method, data, reply)) return reply;
+        const user = await signupWith(db, username, enrolled);
+        return sessionResponse(await sessions.issue(user._id), user);
+      } catch (err) {
+        if (err instanceof CredentialError) return reply.code(400).send({ error: err.message });
+        if (err instanceof VerificationError) return reply.code(err.status).send({ error: err.message });
+        if (err instanceof UsernameTakenError) return reply.code(409).send({ error: err.message });
+        throw err;
+      }
     },
   );
 
-  app.get<{ Params: { provider: string }; Querystring: { redirect?: string } }>(
+  /** Login with SSO: which provider signs in this email's domain (src/auth/sso.ts). */
+  app.get<{ Querystring: { email?: string } }>('/auth/sso', async (req, reply) => {
+    const email = req.query.email ?? '';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply.code(400).send({ error: 'Enter an email address' });
+    const provider = await providerForEmail(email);
+    if (!provider) return reply.code(404).send({ error: `We don't know who signs in ${email.split('@')[1]}` });
+    if (!config.oauth[provider]) return reply.code(404).send({ error: `${email.split('@')[1]} signs in with ${provider}, which isn't set up here yet` });
+    return { provider };
+  });
+
+  app.get<{ Params: { provider: string }; Querystring: { redirect?: string; login_hint?: string } }>(
     '/auth/oauth/:provider/start',
     async (req, reply) => {
       const { provider } = req.params;
@@ -128,7 +186,8 @@ export async function buildServer(db: Db, config: Config) {
       const redirect = req.query.redirect ?? '';
       // Only send session keys to known app URLs.
       if (!config.allowedRedirects.includes(redirect)) return reply.code(400).send({ error: 'Redirect not allowed' });
-      return reply.redirect(authorizeUrl(provider, client, { publicUrl: config.publicUrl, secret: config.authSecret, redirect }));
+      const loginHint = req.query.login_hint?.slice(0, 254);
+      return reply.redirect(authorizeUrl(provider, client, { publicUrl: config.publicUrl, secret: config.authSecret, redirect, loginHint }));
     },
   );
 
@@ -191,7 +250,8 @@ export async function buildServer(db: Db, config: Config) {
     return reply.code(204).send();
   });
 
-  registerAccount(app, db, { authenticate, sessions, config });
+  registerAccount(app, db, { authenticate, sessions, config, sentEmailCode });
+  registerTiles(app, config);
 
   if (existsSync(config.staticDir)) {
     await app.register(fastifyStatic, { root: config.staticDir });

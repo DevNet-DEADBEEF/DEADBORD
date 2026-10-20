@@ -1,3 +1,4 @@
+import { Phone } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
@@ -5,6 +6,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'phone',
   label: 'Phone',
+  icon: Phone,
   kind: 'form',
   initial: { phone: '' },
   Input: ({ value, onChange }) => (

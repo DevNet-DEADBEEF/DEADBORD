@@ -1,11 +1,13 @@
+import { Building2 } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
-/** Login with SSO: the email's domain picks the identity provider. */
+/** Login with SSO: the email's domain picks the identity provider (backend/src/auth/sso.ts). */
 export default defineMethod({
   type: 'sso',
   label: 'SSO',
-  kind: 'form',
+  icon: Building2,
+  kind: 'sso',
   initial: { email: '' },
   Input: ({ value, onChange }) => (
     <TextField
@@ -19,5 +21,5 @@ export default defineMethod({
     />
   ),
   isValid: (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email),
-  note: "You'll continue at your organization's sign-in page.",
+  note: "You'll continue at your organization's sign-in page (Google or Microsoft).",
 });

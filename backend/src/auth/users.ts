@@ -31,9 +31,9 @@ export async function randomUser(db: Db): Promise<User | undefined> {
 
 export class UsernameTakenError extends Error {}
 
-/** Creates a user enrolled in Login With Username. */
-export async function signupWithUsername(db: Db, username: string): Promise<User> {
-  const user: User = { _id: ids.next(), username, createdDate: now(), credentials: [credential('username', 'knows')] };
+/** Creates a user enrolled in one login method (built by buildCredential). */
+export async function signupWith(db: Db, username: string, enrolled: AuthObject): Promise<User> {
+  const user: User = { _id: ids.next(), username, createdDate: now(), credentials: [enrolled] };
   try {
     await collections(db).users.insertOne(user);
     return user;

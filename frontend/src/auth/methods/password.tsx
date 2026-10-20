@@ -1,3 +1,4 @@
+import { KeyRound } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
@@ -5,6 +6,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'password',
   label: 'Password',
+  icon: KeyRound,
   kind: 'form',
   initial: { password: '' },
   Input: ({ value, onChange, mode }) => (

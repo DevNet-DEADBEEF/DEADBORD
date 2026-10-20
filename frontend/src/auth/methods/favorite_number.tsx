@@ -1,3 +1,4 @@
+import { Hash } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
@@ -5,6 +6,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'favorite_number',
   label: 'Favorite Number',
+  icon: Hash,
   kind: 'form',
   initial: { number: '' },
   Input: ({ value, onChange }) => (

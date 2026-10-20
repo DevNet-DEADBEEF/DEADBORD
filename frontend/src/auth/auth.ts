@@ -35,24 +35,41 @@ export interface Candidate {
   username: string;
 }
 
-export type LoginResult = { session: AuthSession } | { candidates: Candidate[] };
+/**
+ * The server emailed a code (Login with email); repeat the request with the
+ * code added to the method's data.
+ */
+export interface CodeSent {
+  codeSent: true;
+  /** The address it went to. */
+  to: string;
+}
+
+/** `ticket` (email logins) stands in for the used-up code when repeating the login. */
+export type LoginResult = { session: AuthSession } | { candidates: Candidate[]; ticket?: string } | CodeSent;
 
 /**
  * Logs in with a non-OAuth method (see src/auth/methods). Methods that can
  * match several users return candidates; repeat with the chosen userId.
  */
 export async function login(method: string, data: Record<string, unknown>, userId?: string): Promise<LoginResult> {
-  const res = await api<AuthSession | { candidates: Candidate[] }>('/auth/login', {
+  const res = await api<AuthSession | { candidates: Candidate[]; ticket?: string } | CodeSent>('/auth/login', {
     method: 'POST',
     body: { method, data, userId },
   });
-  return 'candidates' in res ? { candidates: res.candidates } : { session: { key: res.key, user: res.user } };
+  if ('candidates' in res || 'codeSent' in res) return res;
+  return { session: { key: res.key, user: res.user } };
 }
 
 /** Creates an account with a username, enrolled in one login method. */
-export async function signup(username: string, method: string, data: Record<string, unknown>): Promise<AuthSession> {
-  const { key, user } = await api<AuthSession>('/auth/signup', { method: 'POST', body: { username, method, data } });
-  return { key, user };
+export async function signup(username: string, method: string, data: Record<string, unknown>): Promise<AuthSession | CodeSent> {
+  const res = await api<AuthSession | CodeSent>('/auth/signup', { method: 'POST', body: { username, method, data } });
+  return 'codeSent' in res ? res : { key: res.key, user: res.user };
+}
+
+/** Login with SSO: the OAuth provider that signs in this email's domain. */
+export async function ssoProvider(email: string): Promise<string> {
+  return (await api<{ provider: string }>(`/auth/sso?email=${encodeURIComponent(email)}`)).provider;
 }
 
 /** Checks a stored key; rotates it first when the server asks. Undefined if it is no longer valid. */
@@ -102,24 +119,26 @@ async function authSession(url: string): Promise<string | undefined> {
   return result.type === 'success' ? result.url : undefined;
 }
 
-function startUrl(provider: string): string {
-  return `${API_URL}/auth/oauth/${provider}/start?redirect=${encodeURIComponent(redirectUrl())}`;
+function startUrl(provider: string, loginHint?: string): string {
+  const hint = loginHint ? `&login_hint=${encodeURIComponent(loginHint)}` : '';
+  return `${API_URL}/auth/oauth/${provider}/start?redirect=${encodeURIComponent(redirectUrl())}${hint}`;
 }
 
 /**
  * Logs in with a third-party provider. The desktop and native apps use a
  * login window and resolve with the session (undefined if the user cancels);
- * web navigates away and finishes on the /auth/callback route.
+ * web navigates away and finishes on the /auth/callback route. `loginHint`
+ * (an email) pre-fills the account at providers that support it.
  */
-export async function loginWithProvider(provider: string): Promise<AuthSession | undefined> {
+export async function loginWithProvider(provider: string, loginHint?: string): Promise<AuthSession | undefined> {
   if (!(await fetchProviders()).includes(provider)) {
     throw new ApiError(`${PROVIDER_LABELS[provider] ?? provider} login isn't set up yet`);
   }
   if (navigatesAway) {
-    window.location.assign(startUrl(provider));
+    window.location.assign(startUrl(provider, loginHint));
     return new Promise(() => {}); // the page is unloading
   }
-  const finished = await authSession(startUrl(provider));
+  const finished = await authSession(startUrl(provider, loginHint));
   return finished ? completeLogin(finished) : undefined;
 }
 
@@ -144,9 +163,9 @@ export function renameAccount(key: string, username: string): Promise<AccountInf
   return api<AccountInfo>('/auth/account', { method: 'PATCH', key, body: { username } });
 }
 
-/** Enrolls (or re-enrolls) a form-based login method. */
-export function enroll(key: string, method: string, data: Record<string, unknown>): Promise<AccountInfo> {
-  return api<AccountInfo>('/auth/account/credentials', { method: 'POST', key, body: { method, data } });
+/** Enrolls (or re-enrolls) a form-based login method. Email first sends a code (CodeSent). */
+export function enroll(key: string, method: string, data: Record<string, unknown>): Promise<AccountInfo | CodeSent> {
+  return api<AccountInfo | CodeSent>('/auth/account/credentials', { method: 'POST', key, body: { method, data } });
 }
 
 export function unenroll(key: string, method: string): Promise<AccountInfo> {

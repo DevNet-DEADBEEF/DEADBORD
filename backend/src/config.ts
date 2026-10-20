@@ -21,6 +21,8 @@ export interface Config {
   allowedRedirects: string[];
   corsOrigins: string[];
   oauth: Partial<Record<string, OAuthClient>>;
+  /** Outgoing mail for email logins. Unset: codes are written to the server log instead. */
+  smtp?: { host: string; port: number; secure: boolean; user?: string; pass?: string; from: string };
   tdlp: {
     /** UDP port for TDLP (data transfer); separate from the HTTP port. */
     port: number;
@@ -32,6 +34,34 @@ export interface Config {
 
 function list(value: string | undefined): string[] {
   return (value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/** Mailtrap's sending SMTP server; it authenticates as "api" with an API token. */
+const MAILTRAP_HOST = 'live.smtp.mailtrap.io';
+
+/**
+ * Outgoing mail: SMTP_HOST and friends, or just MAILTRAP_TOKEN for
+ * Mailtrap. Mailtrap only sends from domains verified in its dashboard, so
+ * SMTP_FROM must use one.
+ */
+function smtpConfig(env: NodeJS.ProcessEnv): Config['smtp'] {
+  const from = env.SMTP_FROM ?? 'DEADBORD <no-reply@localhost>';
+  if (env.SMTP_HOST) {
+    return {
+      host: env.SMTP_HOST,
+      port: Number(env.SMTP_PORT ?? 587),
+      // Port 465 is TLS from the start; others upgrade with STARTTLS.
+      secure: env.SMTP_SECURE ? env.SMTP_SECURE === 'true' : env.SMTP_PORT === '465',
+      user: env.SMTP_USER || undefined,
+      pass: env.SMTP_PASS || undefined,
+      from,
+    };
+  }
+  if (env.MAILTRAP_TOKEN) {
+    if (!env.SMTP_FROM) throw new Error('MAILTRAP_TOKEN needs SMTP_FROM, an address on a domain verified in Mailtrap');
+    return { host: MAILTRAP_HOST, port: 587, secure: false, user: 'api', pass: env.MAILTRAP_TOKEN, from };
+  }
+  return undefined;
 }
 
 export function loadConfig(env = process.env): Config {
@@ -67,6 +97,7 @@ export function loadConfig(env = process.env): Config {
     // Default: the Expo web dev server (`npm run web` in frontend/) and the desktop app.
     corsOrigins: env.CORS_ORIGINS === undefined ? ['http://localhost:8081', 'app://deadbord'] : list(env.CORS_ORIGINS),
     oauth,
+    smtp: smtpConfig(env),
     tdlp: {
       port: Number(env.TDLP_PORT ?? 3001),
       host: env.TDLP_HOST ?? env.HOST ?? '0.0.0.0',

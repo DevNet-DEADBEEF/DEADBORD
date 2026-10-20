@@ -1,3 +1,4 @@
+import { Landmark } from 'lucide-react-native';
 import { View } from 'react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
@@ -6,6 +7,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'bank',
   label: 'Bank',
+  icon: Landmark,
   kind: 'form',
   initial: { account: '', routing: '' },
   Input: ({ value, onChange }) => (

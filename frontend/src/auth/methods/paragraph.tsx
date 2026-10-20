@@ -1,3 +1,4 @@
+import { Pilcrow } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { TEXT_MAX } from '@/api/types';
 import { defineMethod } from './types';
@@ -6,6 +7,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'paragraph',
   label: 'Paragraph',
+  icon: Pilcrow,
   kind: 'form',
   initial: { paragraph: '' },
   Input: ({ value, onChange, mode }) => (

@@ -1,3 +1,4 @@
+import { RectangleEllipsis } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
@@ -5,6 +6,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'pin',
   label: 'PIN',
+  icon: RectangleEllipsis,
   kind: 'form',
   initial: { pin: '' },
   Input: ({ value, onChange }) => (

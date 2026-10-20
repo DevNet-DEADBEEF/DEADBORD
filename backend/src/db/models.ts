@@ -121,12 +121,26 @@ export interface Session {
   rotatedDate?: Timestamp;
 }
 
+/** A pending email login code (src/auth/verification.ts). */
+export interface Verification {
+  _id: Id;
+  /** Normalized (lowercase) address the code was sent to. */
+  email: string;
+  /** HMAC of the code; the code itself is never stored. */
+  codeHash: string;
+  createdDate: Timestamp;
+  expiresDate: Timestamp;
+  /** Wrong guesses so far. */
+  attempts: number;
+}
+
 export interface Collections {
   users: Collection<User>;
   boards: Collection<Board>;
   lists: Collection<List>;
   tasks: Collection<Task>;
   sessions: Collection<Session>;
+  verifications: Collection<Verification>;
 }
 
 /** Validators and indexes are applied by db/setup.mongosh.js (npm run db:setup). */
@@ -137,6 +151,7 @@ export function collections(db: Db): Collections {
     lists: db.collection<List>('Lists'),
     tasks: db.collection<Task>('Tasks'),
     sessions: db.collection<Session>('Sessions'),
+    verifications: db.collection<Verification>('Verifications'),
   };
 }
 

@@ -143,11 +143,29 @@ schemas.Sessions = {
   },
 };
 
+// Email login codes; only an HMAC of the code is stored.
+schemas.Verifications = {
+  bsonType: 'object',
+  title: 'Email Verification',
+  required: ['_id', 'email', 'codeHash', 'createdDate', 'expiresDate', 'attempts'],
+  additionalProperties: false,
+  properties: {
+    _id: id,
+    email: { bsonType: 'string', maxLength: 254 },
+    codeHash: { bsonType: 'string' },
+    createdDate: date,
+    expiresDate: date,
+    attempts: { bsonType: 'int', minimum: 0 },
+  },
+};
+
 const indexes = {
   Users: [
     [{ username: 1 }, { unique: true }],
     // Third-party logins: data.subject is "<provider>:<provider user id>".
     [{ 'credentials.data.subject': 1 }, { unique: true, partialFilterExpression: { 'credentials.data.subject': { $exists: true } } }],
+    // Logins find users by the methods they enrolled in.
+    [{ 'credentials.type': 1 }],
   ],
   Bords: [[{ createdBy: 1 }], [{ 'members.userId': 1 }]],
   Lists: [[{ boardId: 1 }]],
@@ -155,6 +173,7 @@ const indexes = {
   Tasks: [[{ listId: 1, dueDate: 1 }]],
   // Revoke-all for a user, and purging expired sessions.
   Sessions: [[{ userId: 1 }], [{ expiresDate: 1 }]],
+  Verifications: [[{ email: 1 }], [{ expiresDate: 1 }]],
 };
 
 const existing = new Set(conn.getCollectionNames());

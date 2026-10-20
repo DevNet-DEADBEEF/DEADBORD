@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { login, loginWithProvider, signup, type AuthSession, type Candidate } from '@/auth/auth';
+import { login, loginWithProvider, signup, ssoProvider, type AuthSession, type Candidate, type CodeSent } from '@/auth/auth';
+import { CodeEntry } from '@/auth/CodeEntry';
 import { LOGIN_METHODS, type AuthMode, type LoginMethod } from '@/auth/methods';
 import { Button, Choice, TextField } from '@/components';
 import { useSession } from '@/session';
-import { styles } from '@/styles';
+import { INK, styles } from '@/styles';
 
 const USERNAME = /^[\x20-\x7E]{1,32}$/;
 
@@ -22,6 +23,10 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [candidates, setCandidates] = useState<Candidate[]>();
+  /** Email logins: where the code went, and the code typed so far. */
+  const [codeSentTo, setCodeSentTo] = useState<string>();
+  const [code, setCode] = useState('');
+  const [ticket, setTicket] = useState<string>();
 
   if (user) return <Redirect href="/boards" />;
 
@@ -30,12 +35,26 @@ export default function LoginScreen() {
   const value = values[method.type] ?? method.initial;
   // Signing up needs a username; the username method already asks for one, OAuth takes it from the provider.
   const askUsername = mode === 'signup' && method.kind === 'form' && method.type !== 'username';
-  const valid = method.isValid(value, mode) && (!askUsername || USERNAME.test(signupUsername));
-  const data = () => method.toData?.(value) ?? (value as Record<string, unknown>);
+  const valid =
+    method.isValid(value, mode) && (!askUsername || USERNAME.test(signupUsername)) && (!codeSentTo || /^\d{6}$/.test(code));
+  /** The method's data, plus the email code once one was sent. */
+  const data = (extra: Record<string, unknown> = codeSentTo ? { code } : {}) => ({
+    ...(method.toData?.(value) ?? (value as Record<string, unknown>)),
+    ...extra,
+  });
 
   function reset() {
     setError(undefined);
     setCandidates(undefined);
+    setCodeSentTo(undefined);
+    setCode('');
+    setTicket(undefined);
+  }
+
+  function codeSent(sent: CodeSent): undefined {
+    setCodeSentTo(sent.to);
+    setCode('');
+    return undefined;
   }
 
   function selectMethod(m: LoginMethod) {
@@ -59,23 +78,47 @@ export default function LoginScreen() {
     }
   }
 
-  async function loginAs(userId?: string): Promise<AuthSession | undefined> {
-    const result = await login(method.type, data(), userId);
+  /** `extra` replaces the email code: {} asks for a new one. */
+  async function loginAs(userId?: string, extra?: Record<string, unknown>): Promise<AuthSession | undefined> {
+    const result = await login(method.type, data(userId && ticket ? { ticket } : extra), userId);
+    if ('codeSent' in result) return codeSent(result);
     if ('candidates' in result) {
       setCandidates(result.candidates);
+      setTicket(result.ticket);
       return undefined;
     }
     return result.session;
   }
 
-  function submit() {
-    if (method.kind === 'oauth') return run(() => loginWithProvider(method.type));
-    if (mode === 'login') return run(() => loginAs());
-    const username = method.type === 'username' ? (value as { username: string }).username : signupUsername;
-    return run(() => signup(username, method.type, data()));
+  async function signupWith(username: string, extra?: Record<string, unknown>): Promise<AuthSession | undefined> {
+    const result = await signup(username, method.type, data(extra));
+    return 'codeSent' in result ? codeSent(result) : result;
   }
 
-  const submitLabel = method.kind === 'oauth' ? `Continue with ${method.label}` : mode === 'login' ? 'Log in' : 'Sign up';
+  function submit() {
+    if (method.kind === 'oauth') return run(() => loginWithProvider(method.type));
+    if (method.kind === 'sso') {
+      const { email } = value as { email: string };
+      return run(async () => loginWithProvider(await ssoProvider(email), email));
+    }
+    if (mode === 'login') return run(() => loginAs());
+    return run(() => signupWith(method.type === 'username' ? (value as { username: string }).username : signupUsername));
+  }
+
+  function resend() {
+    return run(() => (mode === 'login' ? loginAs(undefined, {}) : signupWith(signupUsername, {})));
+  }
+
+  const submitLabel =
+    method.kind === 'oauth'
+      ? `Continue with ${method.label}`
+      : codeSentTo
+        ? 'Verify'
+        : method.kind === 'sso'
+          ? 'Continue'
+          : mode === 'login'
+            ? 'Log in'
+            : 'Sign up';
 
   return (
     <ScrollView style={{ backgroundColor: '#fff' }} contentContainerStyle={[styles.screen, { maxWidth: 520, width: '100%', alignSelf: 'center' }]}>
@@ -105,7 +148,10 @@ export default function LoginScreen() {
         />
       ) : (
         <>
-          <Text style={styles.heading}>{method.label}</Text>
+          <View style={styles.row}>
+            <method.icon size={20} color={INK} />
+            <Text style={styles.heading}>{method.label}</Text>
+          </View>
           {askUsername ? (
             <TextField
               placeholder="Choose a username"
@@ -117,7 +163,18 @@ export default function LoginScreen() {
             />
           ) : null}
           {method.Input ? (
-            <method.Input value={value} onChange={(v: unknown) => setValues({ ...values, [method.type]: v })} mode={mode} />
+            <method.Input
+              value={value}
+              onChange={(v: unknown) => {
+                setValues({ ...values, [method.type]: v });
+                // A code is for the address it was sent to.
+                if (codeSentTo) reset();
+              }}
+              mode={mode}
+            />
+          ) : null}
+          {codeSentTo ? (
+            <CodeEntry to={codeSentTo} code={code} onChange={setCode} busy={busy} onResend={resend} />
           ) : null}
           {method.kind === 'oauth' ? (
             <Text style={styles.muted}>
@@ -138,6 +195,7 @@ export default function LoginScreen() {
           <Choice
             key={m.type}
             label={m.label}
+            icon={m.icon}
             selected={m.type === method.type}
             onPress={() => selectMethod(m)}
             style={{ flexBasis: '30%', flexGrow: 1, maxWidth: '33%' }}

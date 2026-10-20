@@ -17,6 +17,8 @@ interface Provider {
   tokenUrl: string;
   userInfoUrl: string;
   scope: string;
+  /** Accepts login_hint, pre-filling the account to sign in with. */
+  loginHint?: boolean;
   /** Pulls a stable id and a display name out of the userinfo response. */
   identity(info: Record<string, unknown>): { subject: string; name?: string };
 }
@@ -32,6 +34,7 @@ export const PROVIDERS = {
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
     scope: 'openid profile',
+    loginHint: true,
     identity: oidc,
   },
   microsoft: {
@@ -39,6 +42,7 @@ export const PROVIDERS = {
     tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
     userInfoUrl: 'https://graph.microsoft.com/oidc/userinfo',
     scope: 'openid profile',
+    loginHint: true,
     identity: oidc,
   },
   discord: {
@@ -107,12 +111,12 @@ export function callbackUrl(publicUrl: string, provider: ProviderName): string {
 export function authorizeUrl(
   provider: ProviderName,
   client: OAuthClient,
-  opts: { publicUrl: string; secret: Buffer; redirect: string; linkUser?: string },
+  opts: { publicUrl: string; secret: Buffer; redirect: string; linkUser?: string; loginHint?: string },
 ): string {
   const verifier = base64url(randomBytes(32));
-  const p = PROVIDERS[provider];
+  const p: Provider = PROVIDERS[provider];
   const url = new URL(p.authorizeUrl);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     response_type: 'code',
     client_id: client.clientId,
     redirect_uri: callbackUrl(opts.publicUrl, provider),
@@ -123,7 +127,9 @@ export function authorizeUrl(
     ),
     code_challenge: base64url(createHash('sha256').update(verifier).digest()),
     code_challenge_method: 'S256',
-  }).toString();
+  });
+  if (opts.loginHint && p.loginHint) params.set('login_hint', opts.loginHint);
+  url.search = params.toString();
   return url.toString();
 }
 

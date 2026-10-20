@@ -1,3 +1,4 @@
+import { User } from 'lucide-react-native';
 import { TextField } from '@/components';
 import { defineMethod } from './types';
 
@@ -5,6 +6,7 @@ import { defineMethod } from './types';
 export default defineMethod({
   type: 'username',
   label: 'Username',
+  icon: User,
   kind: 'form',
   initial: { username: '' },
   Input: ({ value, onChange }) => (

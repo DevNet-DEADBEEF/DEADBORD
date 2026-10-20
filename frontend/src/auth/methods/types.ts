@@ -10,6 +10,9 @@
 
 import type { ComponentType } from 'react';
 
+/** A method's button icon: lucide-react-native icons fit, as do the logos in brandIcons.tsx. */
+export type MethodIcon = ComponentType<{ size?: number; color?: string }>;
+
 export type AuthMode = 'login' | 'signup';
 
 export interface MethodInputProps<V> {
@@ -22,8 +25,12 @@ export interface LoginMethod<V = any> {
   /** Backend AuthType. */
   type: string;
   label: string;
-  /** 'oauth' methods have no inputs; they continue on the provider's site. */
-  kind: 'form' | 'oauth';
+  icon: MethodIcon;
+  /**
+   * 'oauth' methods have no inputs; they continue on the provider's site.
+   * 'sso' takes an email whose domain picks the OAuth provider.
+   */
+  kind: 'form' | 'oauth' | 'sso';
   /** Empty value when the method is selected. */
   initial: V;
   /** The method's inputs; omitted when it needs none. */
@@ -43,6 +50,6 @@ export function defineMethod<V>(method: LoginMethod<V>): LoginMethod<V> {
 }
 
 /** Third-party providers: no inputs, the server runs the OAuth2 flow. */
-export function oauthMethod(type: string, label: string): LoginMethod<Record<string, never>> {
-  return { type, label, kind: 'oauth', initial: {}, isValid: () => true };
+export function oauthMethod(type: string, label: string, icon: MethodIcon): LoginMethod<Record<string, never>> {
+  return { type, label, icon, kind: 'oauth', initial: {}, isValid: () => true };
 }
