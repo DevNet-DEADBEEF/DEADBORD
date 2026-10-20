@@ -3,16 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/tdlp/index.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:setup": "node --env-file=.env -e \"require('child_process').execFileSync('mongosh',['--nodb','--quiet','db/setup.mongosh.js'],{stdio:'inherit'})\"",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "tsc && node --env-file=.env dist/index.js",
+    "db:seed": "tsc && node --env-file=.env dist/scripts/seed.js",
+    "build:web": "cd ../frontend && npx expo export --platform web"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.1",
+    "@fastify/static": "^10.1.6",
+    "fastify": "^5.12.7",
     "mongodb": "^7.7.0"
   }
 }

@@ -1,6 +1,6 @@
 import { MongoClient, type Db } from 'mongodb';
 
-const DEFAULT_DB_NAME = 'deadbord';
+const DEFAULT_DB_NAME = 'DEADBORD';
 
 let client: MongoClient | undefined;
 
@@ -17,7 +17,8 @@ function mongoUri(): string {
 
 export async function connect(): Promise<Db> {
   if (!client) {
-    client = new MongoClient(mongoUri());
+    // IDs and dates are BSON longs; map them to bigint so 64-bit IDs keep full precision.
+    client = new MongoClient(mongoUri(), { useBigInt64: true });
     await client.connect();
   }
   return client.db(process.env.MONGO_DB ?? DEFAULT_DB_NAME);

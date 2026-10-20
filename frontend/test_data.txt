@@ -1,0 +1,8 @@
+usr=pilot1782
+pwd=cY2T2MQNVb2e
+pin=3394
+sque="What is the best todo app?" → DEADBORD
+clr=1e90ff
+bdy=1990-01-01
+bty=O+
+phn=1-555-0100
