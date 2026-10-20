@@ -1,0 +1,18 @@
+{
+  "name": "deadbord-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/tdlp/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "mongodb": "^7.7.0"
+  }
+}
