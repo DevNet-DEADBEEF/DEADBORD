@@ -1,7 +1,7 @@
-import { useState, type ComponentType } from 'react';
+import { createContext, useContext, useState, type ComponentType, type ReactNode } from 'react';
 import { Pressable, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { toAscii } from '@/ascii';
-import { DANGER, INK, styles } from '@/styles';
+import { DANGER, INK, PLACEHOLDER, styles } from '@/styles';
 
 export interface ButtonProps {
   label: string;
@@ -73,14 +73,31 @@ export function Choice({
   return <Button label={label} selected={selected} onPress={onPress} size="small" style={style} icon={icon} />;
 }
 
-/** Text input that only ever produces ASCII (see ascii.ts), within maxLength. */
-export function TextField({ onChangeText, maxLength, multiline, style, ...props }: TextInputProps) {
+const SubmitContext = createContext<(() => void) | undefined>(undefined);
+
+/**
+ * Pressing Enter in a single-line TextField inside calls `onSubmit`, unless
+ * the field has its own onSubmitEditing. For forms whose fields don't know
+ * the form, such as a login method's inputs. `onSubmit` checks validity.
+ */
+export function SubmitScope({ onSubmit, children }: { onSubmit(): void; children: ReactNode }) {
+  return <SubmitContext.Provider value={onSubmit}>{children}</SubmitContext.Provider>;
+}
+
+/**
+ * Text input that only ever produces ASCII (see ascii.ts), within maxLength.
+ * Enter submits single-line fields: onSubmitEditing, or the SubmitScope's.
+ */
+export function TextField({ onChangeText, maxLength, multiline, style, onSubmitEditing, ...props }: TextInputProps) {
+  const scoped = useContext(SubmitContext);
   return (
     <TextInput
+      placeholderTextColor={PLACEHOLDER}
       {...props}
       style={[styles.input, style]}
       multiline={multiline}
       maxLength={maxLength}
+      onSubmitEditing={onSubmitEditing ?? (multiline || !scoped ? undefined : () => scoped())}
       onChangeText={(text) => {
         const ascii = toAscii(text, multiline);
         onChangeText?.(maxLength === undefined ? ascii : ascii.slice(0, maxLength));

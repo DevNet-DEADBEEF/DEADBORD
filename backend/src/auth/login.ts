@@ -35,7 +35,11 @@ export async function findMatches(db: Db, key: Buffer, type: AuthType, data: unk
   const enrolled: Filter<User> = { 'credentials.type': type };
   const only = (found: User[]) => (chosen === undefined ? found : found.filter((u) => u._id === chosen));
 
-  switch (spec.login.by) {
+  // A random pick can't confirm a particular user, so for a chosen user (or a
+  // later multi-factor step) random methods check what was typed instead.
+  const by = spec.login.by === 'random' && chosen !== undefined ? 'exact' : spec.login.by;
+
+  switch (by) {
     case 'random': {
       // "Pick a random user enrolled with gov id": what was typed doesn't matter.
       const [user] = await users.aggregate<User>([{ $match: enrolled }, { $sample: { size: 1 } }]).toArray();
@@ -71,7 +75,7 @@ export async function findMatches(db: Db, key: Buffer, type: AuthType, data: unk
     }
 
     case 'nearest': {
-      const field = spec.login.field;
+      const field = (spec.login as { field: string }).field;
       const value = parseFields(type, data)[field] as number;
       const ranked = await users
         .aggregate<User & { distance: number }>([

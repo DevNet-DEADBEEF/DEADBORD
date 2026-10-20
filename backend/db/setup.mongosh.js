@@ -28,6 +28,8 @@ const schemas = {
       _id: id,
       username: { bsonType: 'string', minLength: 1, maxLength: 32, pattern: ASCII_LINE },
       createdDate: date,
+      // How many MFA categories (is/knows/has) a login must cover; missing means 1.
+      requiredFactors: { bsonType: 'int', minimum: 1, maximum: 3 },
       credentials: {
         bsonType: 'array',
         items: {

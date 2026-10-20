@@ -29,7 +29,7 @@ type Field =
       check?(v: string): boolean;
       secret?: boolean;
     }
-  | { kind: 'number'; min?: number; max?: number; integer?: boolean };
+  | { kind: 'number'; min?: number; max?: number; integer?: boolean; /** Rounded to this many decimal places. */ decimals?: number };
 
 /**
  * How a login with the method finds users (src/auth/login.ts):
@@ -88,7 +88,7 @@ export const ENROLLABLE: Partial<Record<AuthType, MethodSpec>> = {
   favorite_color: { mfa: 'knows', fields: { color: str({ normalize: (c) => c.toLowerCase(), pattern: /^#[0-9a-f]{6}$/ }) }, login: exact },
   favorite_number: { mfa: 'knows', fields: { number: num() }, login: exact },
   birthday: { mfa: 'knows', fields: { birthday: str({ pattern: /^\d{4}-\d{2}-\d{2}$/ }) }, login: exact },
-  slider: { mfa: 'knows', fields: { position: num({ min: 0, max: 1000, integer: true }) }, login: exact },
+  slider: { mfa: 'knows', fields: { position: num({ min: 0, max: 1000, decimals: 3 }) }, login: exact },
   billing_address: {
     mfa: 'knows',
     fields: {
@@ -174,7 +174,7 @@ export function parseFields(type: AuthType, input: unknown): Record<string, stri
       if ((field.integer && !Number.isInteger(n)) || (field.min !== undefined && n < field.min) || (field.max !== undefined && n > field.max)) {
         throw new CredentialError(`${name} is out of range`);
       }
-      data[name] = n;
+      data[name] = field.decimals === undefined ? n : Math.round(n * 10 ** field.decimals) / 10 ** field.decimals;
       continue;
     }
     if (typeof value !== 'string') throw new CredentialError(`${name} is required`);

@@ -3,6 +3,8 @@ import { fromTimestamp, type Timestamp } from '@/epoch';
 
 export const INK = '#222';
 export const DANGER = '#c0392b';
+/** Placeholder text in inputs. */
+export const PLACEHOLDER = '#b0b0b0';
 
 export const styles = StyleSheet.create({
   screen: { flex: 1, padding: 16, gap: 12, backgroundColor: '#fff' },

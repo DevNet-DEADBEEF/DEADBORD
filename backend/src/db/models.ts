@@ -53,6 +53,8 @@ export interface User {
   username: string;
   createdDate: Timestamp;
   credentials: AuthObject[];
+  /** How many MFA categories (is/knows/has) a login must cover: 1-3, default 1. */
+  requiredFactors?: number;
 }
 
 /** Board-level permissions; each level includes the ones before it. */

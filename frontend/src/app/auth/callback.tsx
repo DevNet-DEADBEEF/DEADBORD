@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components';
-import { completeLogin } from '@/auth/auth';
+import { completeLogin, setPendingChallenge } from '@/auth/auth';
 import { useSession } from '@/session';
 import { styles } from '@/styles';
 
 /**
  * Web: the server redirects here after a third-party login (session key in
  * the fragment) or after linking a provider to the account (#linked=...).
+ * A login that needs more factors goes back to the login screen for them.
  */
 export default function AuthCallbackScreen() {
   const { signIn } = useSession();
@@ -23,8 +24,15 @@ export default function AuthCallbackScreen() {
       return;
     }
     completeLogin(url)
-      .then(signIn)
-      .then(() => router.replace('/boards'))
+      .then(async (result) => {
+        if ('challenge' in result) {
+          setPendingChallenge(result);
+          router.replace('/');
+          return;
+        }
+        await signIn(result);
+        router.replace('/boards');
+      })
       .catch((e: Error) => setError(e.message));
   }, [signIn]);
 

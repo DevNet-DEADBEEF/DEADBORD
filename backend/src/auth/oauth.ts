@@ -4,13 +4,14 @@
  * The server is the OAuth client: it redirects the browser to the provider,
  * receives the callback, exchanges the code with its client secret and reads
  * the user's identity. OAuth state (provider, PKCE verifier, app redirect) is
- * encrypted into the `state` parameter, so any instance can finish a login
- * without shared storage.
+ * sealed into the `state` parameter (src/auth/seal.ts), so any instance can
+ * finish a login without shared storage.
  */
 
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { AuthType } from '../db/models.js';
 import type { OAuthClient } from '../config.js';
+import { seal, unseal } from './seal.js';
 
 interface Provider {
   authorizeUrl: string;
@@ -77,30 +78,17 @@ interface State {
   expires: number;
   /** Set when linking the provider to an existing user instead of logging in. */
   linkUser?: string;
+  /** Set when this login is a later step of a multi-factor login (src/auth/factors.ts). */
+  challenge?: string;
 }
 
 function base64url(buf: Buffer): string {
   return buf.toString('base64url');
 }
 
-function sealState(state: State, secret: Buffer): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', secret, iv);
-  const body = Buffer.concat([cipher.update(JSON.stringify(state)), cipher.final()]);
-  return base64url(Buffer.concat([iv, cipher.getAuthTag(), body]));
-}
-
 /** Returns undefined for tampered, foreign or expired state. */
 export function openState(sealed: string, secret: Buffer): State | undefined {
-  try {
-    const raw = Buffer.from(sealed, 'base64url');
-    const decipher = createDecipheriv('aes-256-gcm', secret, raw.subarray(0, 12));
-    decipher.setAuthTag(raw.subarray(12, 28));
-    const state = JSON.parse(Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString()) as State;
-    return state.expires > Date.now() ? state : undefined;
-  } catch {
-    return undefined;
-  }
+  return unseal<State>(sealed, secret);
 }
 
 export function callbackUrl(publicUrl: string, provider: ProviderName): string {
@@ -111,7 +99,7 @@ export function callbackUrl(publicUrl: string, provider: ProviderName): string {
 export function authorizeUrl(
   provider: ProviderName,
   client: OAuthClient,
-  opts: { publicUrl: string; secret: Buffer; redirect: string; linkUser?: string; loginHint?: string },
+  opts: { publicUrl: string; secret: Buffer; redirect: string; linkUser?: string; loginHint?: string; challenge?: string },
 ): string {
   const verifier = base64url(randomBytes(32));
   const p: Provider = PROVIDERS[provider];
@@ -121,8 +109,15 @@ export function authorizeUrl(
     client_id: client.clientId,
     redirect_uri: callbackUrl(opts.publicUrl, provider),
     scope: p.scope,
-    state: sealState(
-      { provider, verifier, redirect: opts.redirect, expires: Date.now() + STATE_TTL_MS, linkUser: opts.linkUser },
+    state: seal(
+      {
+        provider,
+        verifier,
+        redirect: opts.redirect,
+        expires: Date.now() + STATE_TTL_MS,
+        linkUser: opts.linkUser,
+        challenge: opts.challenge,
+      } satisfies State,
       opts.secret,
     ),
     code_challenge: base64url(createHash('sha256').update(verifier).digest()),

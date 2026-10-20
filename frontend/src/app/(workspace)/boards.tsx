@@ -40,7 +40,14 @@ export default function BoardsPage() {
       <Text style={styles.title}>Boards</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.row}>
-        <TextField style={styles.grow} placeholder="New board title" maxLength={TITLE_MAX} value={title} onChangeText={setTitle} />
+        <TextField
+          style={styles.grow}
+          placeholder="New board title"
+          maxLength={TITLE_MAX}
+          value={title}
+          onChangeText={setTitle}
+          onSubmitEditing={() => title.trim() && create()}
+        />
         <Button label="Create" disabled={!title.trim()} onPress={create} />
       </View>
       {boards?.length === 0 ? <Text style={styles.muted}>No boards yet.</Text> : null}

@@ -7,6 +7,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { MongoServerError, type Db } from 'mongodb';
 import { buildCredential, CredentialError } from '../auth/credentials.js';
+import { availableFactors, MAX_FACTORS, requiredFactors } from '../auth/factors.js';
 import { authorizeUrl, isProvider } from '../auth/oauth.js';
 import type { ResolvedSession, SessionStore } from '../auth/sessions.js';
 import { VerificationError } from '../auth/verification.js';
@@ -20,6 +21,9 @@ function account(user: User) {
   return {
     user: { id: user._id.toString(), username: user.username },
     credentials: user.credentials.map((c) => ({ type: c.type, mfa: c.mfa, createdDate: Number(c.createdDate) })),
+    requiredFactors: requiredFactors(user),
+    /** Categories the user can log in with, so the most they can require. */
+    availableFactors: [...availableFactors(user)],
   };
 }
 
@@ -51,15 +55,31 @@ export function registerAccount(
     return user ? account(user) : reply;
   });
 
-  app.patch<{ Body: { username?: unknown } }>('/auth/account', async (req, reply) => {
+  /** Changes the username and/or how many factors a login needs (src/auth/factors.ts). */
+  app.patch<{ Body: { username?: unknown; requiredFactors?: unknown } }>('/auth/account', async (req, reply) => {
     const user = await me(req, reply);
     if (!user) return reply;
-    const { username } = req.body ?? {};
-    if (typeof username !== 'string' || !isValidUsername(username)) {
-      return reply.code(400).send({ error: 'Usernames are 1-32 printable ASCII characters' });
+    const { username, requiredFactors: factors } = req.body ?? {};
+    const set: Partial<User> = {};
+    if (username !== undefined) {
+      if (typeof username !== 'string' || !isValidUsername(username)) {
+        return reply.code(400).send({ error: 'Usernames are 1-32 printable ASCII characters' });
+      }
+      set.username = username;
     }
+    if (factors !== undefined) {
+      if (typeof factors !== 'number' || !Number.isInteger(factors) || factors < 1 || factors > MAX_FACTORS) {
+        return reply.code(400).send({ error: `Required factors must be 1-${MAX_FACTORS}` });
+      }
+      const available = availableFactors(user).size;
+      if (factors > available) {
+        return reply.code(409).send({ error: `You can only log in with ${available} kind(s) of factor. Add a method of another kind first` });
+      }
+      set.requiredFactors = factors;
+    }
+    if (!Object.keys(set).length) return reply.code(400).send({ error: 'Nothing to change' });
     try {
-      const updated = await c.users.findOneAndUpdate({ _id: user._id }, { $set: { username } }, { returnDocument: 'after' });
+      const updated = await c.users.findOneAndUpdate({ _id: user._id }, { $set: set }, { returnDocument: 'after' });
       return account(updated!);
     } catch (err) {
       if (err instanceof MongoServerError && err.code === 11000) return reply.code(409).send({ error: `${username} is taken` });
@@ -100,6 +120,11 @@ export function registerAccount(
     const { type } = req.params;
     if (!user.credentials.some((cr) => cr.type === type)) return reply.code(404).send({ error: 'Not enrolled in that method' });
     if (user.credentials.length === 1) return reply.code(409).send({ error: "You can't remove your only login method" });
+    // Removing it mustn't leave fewer kinds of factor than the user requires.
+    const remaining = { ...user, credentials: user.credentials.filter((cr) => cr.type !== type) };
+    if (availableFactors(remaining).size < requiredFactors(user)) {
+      return reply.code(409).send({ error: "That's your only method of its kind, and you require it to log in. Lower the required factors first" });
+    }
     const updated = await c.users.findOneAndUpdate(
       { _id: user._id, 'credentials.1': { $exists: true } },
       { $pull: { credentials: { type: type as AuthType } } },

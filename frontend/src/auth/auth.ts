@@ -45,18 +45,41 @@ export interface CodeSent {
   to: string;
 }
 
+export type Factor = 'knows' | 'has' | 'is';
+
+export const FACTOR_LABELS: Record<Factor, string> = {
+  knows: 'Something you know',
+  has: 'Something you have',
+  is: 'Something you are',
+};
+
+/**
+ * A login step succeeded, but the user requires more kinds of factor
+ * (backend/src/auth/factors.ts). Log in again with one of `methods`, passing
+ * `challenge`, until a session comes back.
+ */
+export interface Challenge {
+  challenge: string;
+  /** Kinds of factor that would count for the next step. */
+  remaining: Factor[];
+  /** The user's methods of those kinds. */
+  methods: string[];
+  user: User;
+}
+
 /** `ticket` (email logins) stands in for the used-up code when repeating the login. */
-export type LoginResult = { session: AuthSession } | { candidates: Candidate[]; ticket?: string } | CodeSent;
+export type LoginResult = { session: AuthSession } | { candidates: Candidate[]; ticket?: string } | CodeSent | { step: Challenge };
 
 /**
  * Logs in with a non-OAuth method (see src/auth/methods). Methods that can
  * match several users return candidates; repeat with the chosen userId.
  */
-export async function login(method: string, data: Record<string, unknown>, userId?: string): Promise<LoginResult> {
-  const res = await api<AuthSession | { candidates: Candidate[]; ticket?: string } | CodeSent>('/auth/login', {
+export async function login(method: string, data: Record<string, unknown>, userId?: string, challenge?: string): Promise<LoginResult> {
+  const res = await api<AuthSession | { candidates: Candidate[]; ticket?: string } | CodeSent | Challenge>('/auth/login', {
     method: 'POST',
-    body: { method, data, userId },
+    body: { method, data, userId, challenge },
   });
+  if ('challenge' in res) return { step: res };
   if ('candidates' in res || 'codeSent' in res) return res;
   return { session: { key: res.key, user: res.user } };
 }
@@ -89,11 +112,24 @@ export async function logout(key: string): Promise<void> {
   await api('/auth/logout', { method: 'POST', key }).catch(() => undefined);
 }
 
-/** Reads the key (or error) the server put in the redirect's fragment, and checks it. */
-export async function completeLogin(url: string): Promise<AuthSession> {
+/**
+ * Reads the key (or error) the server put in the redirect's fragment, and
+ * checks it. A user who requires more factors gets the next step instead.
+ */
+export async function completeLogin(url: string): Promise<AuthSession | Challenge> {
   const params = new URLSearchParams(url.split('#')[1] ?? '');
   const error = params.get('error');
   const key = params.get('key');
+  const challenge = params.get('challenge');
+  if (challenge) {
+    const list = (name: string) => (params.get(name) ?? '').split(',').filter(Boolean);
+    return {
+      challenge,
+      remaining: list('remaining') as Factor[],
+      methods: list('methods'),
+      user: { id: '', username: params.get('username') ?? '' },
+    };
+  }
   if (error || !key) throw new ApiError(error ?? 'Login failed');
   const session = await resume(key);
   if (!session) throw new ApiError('Login failed');
@@ -119,9 +155,28 @@ async function authSession(url: string): Promise<string | undefined> {
   return result.type === 'success' ? result.url : undefined;
 }
 
-function startUrl(provider: string, loginHint?: string): string {
-  const hint = loginHint ? `&login_hint=${encodeURIComponent(loginHint)}` : '';
-  return `${API_URL}/auth/oauth/${provider}/start?redirect=${encodeURIComponent(redirectUrl())}${hint}`;
+function startUrl(provider: string, loginHint?: string, challenge?: string): string {
+  const params = new URLSearchParams({ redirect: redirectUrl() });
+  if (loginHint) params.set('login_hint', loginHint);
+  if (challenge) params.set('challenge', challenge);
+  return `${API_URL}/auth/oauth/${provider}/start?${params}`;
+}
+
+/**
+ * Web: a third-party login that needs more factors comes back on
+ * /auth/callback, which hands the challenge to the login screen here.
+ */
+let pendingChallenge: Challenge | undefined;
+
+export function setPendingChallenge(step: Challenge): void {
+  pendingChallenge = step;
+}
+
+/** The challenge waiting for the login screen, once. */
+export function takePendingChallenge(): Challenge | undefined {
+  const step = pendingChallenge;
+  pendingChallenge = undefined;
+  return step;
 }
 
 /**
@@ -129,16 +184,17 @@ function startUrl(provider: string, loginHint?: string): string {
  * login window and resolve with the session (undefined if the user cancels);
  * web navigates away and finishes on the /auth/callback route. `loginHint`
  * (an email) pre-fills the account at providers that support it.
+ * `challenge` makes it a later step of a multi-factor login.
  */
-export async function loginWithProvider(provider: string, loginHint?: string): Promise<AuthSession | undefined> {
+export async function loginWithProvider(provider: string, loginHint?: string, challenge?: string): Promise<AuthSession | Challenge | undefined> {
   if (!(await fetchProviders()).includes(provider)) {
     throw new ApiError(`${PROVIDER_LABELS[provider] ?? provider} login isn't set up yet`);
   }
   if (navigatesAway) {
-    window.location.assign(startUrl(provider, loginHint));
+    window.location.assign(startUrl(provider, loginHint, challenge));
     return new Promise(() => {}); // the page is unloading
   }
-  const finished = await authSession(startUrl(provider, loginHint));
+  const finished = await authSession(startUrl(provider, loginHint, challenge));
   return finished ? completeLogin(finished) : undefined;
 }
 
@@ -146,13 +202,17 @@ export async function loginWithProvider(provider: string, loginHint?: string): P
 
 export interface EnrolledMethod {
   type: string;
-  mfa: 'is' | 'knows' | 'has';
+  mfa: Factor;
   createdDate: number;
 }
 
 export interface AccountInfo {
   user: User;
   credentials: EnrolledMethod[];
+  /** Kinds of factor a login must cover, 1-3. */
+  requiredFactors: number;
+  /** Kinds of factor the user can log in with: the most they can require. */
+  availableFactors: Factor[];
 }
 
 export function getAccount(key: string): Promise<AccountInfo> {
@@ -161,6 +221,10 @@ export function getAccount(key: string): Promise<AccountInfo> {
 
 export function renameAccount(key: string, username: string): Promise<AccountInfo> {
   return api<AccountInfo>('/auth/account', { method: 'PATCH', key, body: { username } });
+}
+
+export function setRequiredFactors(key: string, requiredFactors: number): Promise<AccountInfo> {
+  return api<AccountInfo>('/auth/account', { method: 'PATCH', key, body: { requiredFactors } });
 }
 
 /** Enrolls (or re-enrolls) a form-based login method. Email first sends a code (CodeSent). */

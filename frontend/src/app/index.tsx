@@ -1,10 +1,21 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { login, loginWithProvider, signup, ssoProvider, type AuthSession, type Candidate, type CodeSent } from '@/auth/auth';
+import {
+  FACTOR_LABELS,
+  login,
+  loginWithProvider,
+  signup,
+  ssoProvider,
+  takePendingChallenge,
+  type AuthSession,
+  type Candidate,
+  type Challenge,
+  type CodeSent,
+} from '@/auth/auth';
 import { CodeEntry } from '@/auth/CodeEntry';
 import { LOGIN_METHODS, type AuthMode, type LoginMethod } from '@/auth/methods';
-import { Button, Choice, TextField } from '@/components';
+import { Button, Choice, SubmitScope, TextField } from '@/components';
 import { useSession } from '@/session';
 import { INK, styles } from '@/styles';
 
@@ -27,10 +38,15 @@ export default function LoginScreen() {
   const [codeSentTo, setCodeSentTo] = useState<string>();
   const [code, setCode] = useState('');
   const [ticket, setTicket] = useState<string>();
+  /** A login that needs more factors: the next step's challenge (web OAuth hands it over via /auth/callback). */
+  const [step, setStep] = useState<Challenge | undefined>(takePendingChallenge);
 
   if (user) return <Redirect href="/boards" />;
 
-  const methods = LOGIN_METHODS.filter((m) => mode === 'login' || m.signup !== false);
+  // A later step can only use the user's methods of the remaining kinds.
+  const methods = step
+    ? LOGIN_METHODS.filter((m) => step.methods.includes(m.type))
+    : LOGIN_METHODS.filter((m) => mode === 'login' || m.signup !== false);
   const method = methods.find((m) => m.type === methodType) ?? methods[0];
   const value = values[method.type] ?? method.initial;
   // Signing up needs a username; the username method already asks for one, OAuth takes it from the provider.
@@ -49,6 +65,19 @@ export default function LoginScreen() {
     setCodeSentTo(undefined);
     setCode('');
     setTicket(undefined);
+  }
+
+  /** The next step of a multi-factor login: offer a method that counts for it. */
+  function nextStep(next: Challenge): undefined {
+    setStep(next);
+    reset();
+    if (!next.methods.includes(methodType)) setMethodType(next.methods.find((t) => t !== 'lucky') ?? next.methods[0]);
+    return undefined;
+  }
+
+  function startOver() {
+    setStep(undefined);
+    reset();
   }
 
   function codeSent(sent: CodeSent): undefined {
@@ -80,7 +109,8 @@ export default function LoginScreen() {
 
   /** `extra` replaces the email code: {} asks for a new one. */
   async function loginAs(userId?: string, extra?: Record<string, unknown>): Promise<AuthSession | undefined> {
-    const result = await login(method.type, data(userId && ticket ? { ticket } : extra), userId);
+    const result = await login(method.type, data(userId && ticket ? { ticket } : extra), userId, step?.challenge);
+    if ('step' in result) return nextStep(result.step);
     if ('codeSent' in result) return codeSent(result);
     if ('candidates' in result) {
       setCandidates(result.candidates);
@@ -95,11 +125,17 @@ export default function LoginScreen() {
     return 'codeSent' in result ? codeSent(result) : result;
   }
 
+  /** Third-party logins: a session, or the next step when the user requires more factors. */
+  async function viaProvider(provider: string, loginHint?: string): Promise<AuthSession | undefined> {
+    const result = await loginWithProvider(provider, loginHint, step?.challenge);
+    return result && 'challenge' in result ? nextStep(result) : result;
+  }
+
   function submit() {
-    if (method.kind === 'oauth') return run(() => loginWithProvider(method.type));
+    if (method.kind === 'oauth') return run(() => viaProvider(method.type));
     if (method.kind === 'sso') {
       const { email } = value as { email: string };
-      return run(async () => loginWithProvider(await ssoProvider(email), email));
+      return run(async () => viaProvider(await ssoProvider(email), email));
     }
     if (mode === 'login') return run(() => loginAs());
     return run(() => signupWith(method.type === 'username' ? (value as { username: string }).username : signupUsername));
@@ -124,20 +160,24 @@ export default function LoginScreen() {
     <ScrollView style={{ backgroundColor: '#fff' }} contentContainerStyle={[styles.screen, { maxWidth: 520, width: '100%', alignSelf: 'center' }]}>
       <Text style={styles.title}>DEADBORD</Text>
 
-      <View style={styles.row}>
-        {(['login', 'signup'] as const).map((m) => (
-          <Choice
-            key={m}
-            label={m === 'login' ? 'Log in' : 'Sign up'}
-            selected={mode === m}
-            onPress={() => {
-              setMode(m);
-              reset();
-            }}
-            style={{ flex: 1 }}
-          />
-        ))}
-      </View>
+      {step ? (
+        <StepBanner step={step} onStartOver={startOver} />
+      ) : (
+        <View style={styles.row}>
+          {(['login', 'signup'] as const).map((m) => (
+            <Choice
+              key={m}
+              label={m === 'login' ? 'Log in' : 'Sign up'}
+              selected={mode === m}
+              onPress={() => {
+                setMode(m);
+                reset();
+              }}
+              style={{ flex: 1 }}
+            />
+          ))}
+        </View>
+      )}
 
       {candidates ? (
         <CandidatePicker
@@ -147,7 +187,7 @@ export default function LoginScreen() {
           onCancel={() => setCandidates(undefined)}
         />
       ) : (
-        <>
+        <SubmitScope onSubmit={() => valid && !busy && submit()}>
           <View style={styles.row}>
             <method.icon size={20} color={INK} />
             <Text style={styles.heading}>{method.label}</Text>
@@ -186,10 +226,10 @@ export default function LoginScreen() {
 
           <Button label={submitLabel} disabled={!valid || busy} onPress={submit} />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-        </>
+        </SubmitScope>
       )}
 
-      <Text style={[styles.muted, { marginTop: 8 }]}>{mode === 'login' ? 'Log in with' : 'Sign up with'}</Text>
+      <Text style={[styles.muted, { marginTop: 8 }]}>{step ? 'Continue with' : mode === 'login' ? 'Log in with' : 'Sign up with'}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {methods.map((m) => (
           <Choice
@@ -203,6 +243,24 @@ export default function LoginScreen() {
         ))}
       </View>
     </ScrollView>
+  );
+}
+
+/** Joins kinds of factor as "something you have or something you are". */
+function factorList(factors: Challenge['remaining']): string {
+  return factors.map((f, i) => (i ? FACTOR_LABELS[f].toLowerCase() : FACTOR_LABELS[f])).join(' or ');
+}
+
+/** Shown while a multi-factor login waits for its next step. */
+function StepBanner({ step, onStartOver }: { step: Challenge; onStartOver(): void }) {
+  return (
+    <View style={[styles.card, { gap: 6 }]}>
+      <Text style={{ fontWeight: '600' }}>{step.user.username ? `Logging in as ${step.user.username}` : 'Almost there'}</Text>
+      <Text style={styles.muted}>
+        Your account needs another kind of factor. Continue with {factorList(step.remaining).toLowerCase()}.
+      </Text>
+      <Button label="Start over" size="small" onPress={onStartOver} style={{ alignSelf: 'flex-start' }} />
+    </View>
   );
 }
 

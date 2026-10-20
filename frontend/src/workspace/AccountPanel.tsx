@@ -9,24 +9,21 @@ import {
   renameAccount,
   ssoProvider,
   unenroll,
+  FACTOR_LABELS,
+  setRequiredFactors,
   type CodeSent,
+  type Factor,
   type AccountInfo,
   type EnrolledMethod,
 } from '@/auth/auth';
 import { CodeEntry } from '@/auth/CodeEntry';
 import { LOGIN_METHODS, type LoginMethod } from '@/auth/methods';
-import { Button, Choice, TextField } from '@/components';
+import { Button, Choice, SubmitScope, TextField } from '@/components';
 import { fromTimestamp } from '@/epoch';
 import { useSession } from '@/session';
 import { INK, styles } from '@/styles';
 
 const USERNAME = /^[\x20-\x7E]{1,32}$/;
-
-const FACTOR: Record<EnrolledMethod['mfa'], string> = {
-  knows: 'Something you know',
-  is: 'Something you are',
-  has: 'Something you have',
-};
 
 /** Methods that can't be added from here: lucky picks a random user, and everyone already has a username. */
 const NOT_ADDABLE = new Set(['lucky', 'username']);
@@ -88,6 +85,11 @@ export function AccountPanel() {
           }
         }}
       />
+      <FactorsSection
+        required={account.requiredFactors}
+        available={account.availableFactors}
+        onChange={(n) => run(() => setRequiredFactors(key, n))}
+      />
       <DeleteSection
         username={account.user.username}
         onDelete={async (confirm) => {
@@ -110,7 +112,14 @@ function UsernameSection({ current, onSave }: { current: string; onSave(name: st
     <View style={{ gap: 8 }}>
       <Text style={styles.heading}>Username</Text>
       <View style={styles.row}>
-        <TextField style={styles.grow} autoCapitalize="none" maxLength={32} value={name} onChangeText={setName} />
+        <TextField
+          style={styles.grow}
+          autoCapitalize="none"
+          maxLength={32}
+          value={name}
+          onChangeText={setName}
+          onSubmitEditing={() => name !== current && USERNAME.test(name) && onSave(name)}
+        />
         <Button label="Save" disabled={name === current || !USERNAME.test(name)} onPress={() => onSave(name)} />
       </View>
     </View>
@@ -137,6 +146,14 @@ function MethodsSection({
   const addable = LOGIN_METHODS.filter((m) => !NOT_ADDABLE.has(m.type) && !enrolled.some((e) => e.type === m.type));
   const method = addable.find((m) => m.type === adding);
   const value = method ? (values[method.type] ?? method.initial) : undefined;
+
+  const disabled = !method || busy || !method.isValid(value, 'signup') || (!!codeSentTo && !/^\d{6}$/.test(code));
+
+  function submit() {
+    if (!method) return;
+    if (method.kind !== 'form') onLink(method, value);
+    else void add(codeSentTo ? { code } : {});
+  }
 
   /** `extra` is the email code, or {} to ask for one. */
   async function add(extra: Record<string, unknown>) {
@@ -166,7 +183,7 @@ function MethodsSection({
               <View style={{ flexShrink: 1 }}>
                 <Text style={{ fontWeight: '600' }}>{m?.label ?? e.type}</Text>
                 <Text style={styles.muted}>
-                  {FACTOR[e.mfa]} · added {fromTimestamp(e.createdDate).toLocaleDateString()}
+                  {FACTOR_LABELS[e.mfa]} · added {fromTimestamp(e.createdDate).toLocaleDateString()}
                 </Text>
               </View>
             </View>
@@ -192,27 +209,61 @@ function MethodsSection({
       </View>
 
       {method ? (
-        <View style={[styles.card, { gap: 8 }]}>
-          <Text style={{ fontWeight: '600' }}>{method.label}</Text>
-          {method.Input ? (
-            <method.Input
-              value={value}
-              onChange={(v: unknown) => {
-                setValues({ ...values, [method.type]: v });
-                setCodeSentTo(undefined);
-              }}
-              mode="signup"
+        <SubmitScope onSubmit={() => !disabled && submit()}>
+          <View style={[styles.card, { gap: 8 }]}>
+            <Text style={{ fontWeight: '600' }}>{method.label}</Text>
+            {method.Input ? (
+              <method.Input
+                value={value}
+                onChange={(v: unknown) => {
+                  setValues({ ...values, [method.type]: v });
+                  setCodeSentTo(undefined);
+                }}
+                mode="signup"
+              />
+            ) : null}
+            {codeSentTo ? <CodeEntry to={codeSentTo} code={code} onChange={setCode} busy={busy} onResend={() => add({})} /> : null}
+            {method.kind !== 'form' ? <Text style={styles.muted}>You&apos;ll continue on the provider&apos;s site to link it.</Text> : null}
+            {method.note ? <Text style={styles.muted}>{method.note}</Text> : null}
+            <Button
+              label={method.kind !== 'form' ? `Link ${method.label}` : codeSentTo ? 'Verify' : `Add ${method.label}`}
+              disabled={disabled}
+              onPress={submit}
             />
-          ) : null}
-          {codeSentTo ? <CodeEntry to={codeSentTo} code={code} onChange={setCode} busy={busy} onResend={() => add({})} /> : null}
-          {method.kind !== 'form' ? <Text style={styles.muted}>You&apos;ll continue on the provider&apos;s site to link it.</Text> : null}
-          {method.note ? <Text style={styles.muted}>{method.note}</Text> : null}
+          </View>
+        </SubmitScope>
+      ) : null}
+    </View>
+  );
+}
+
+/** How many kinds of factor (know / have / are) a login must cover. */
+function FactorsSection({ required, available, onChange }: { required: number; available: Factor[]; onChange(n: number): void }) {
+  const missing = (Object.keys(FACTOR_LABELS) as Factor[]).filter((f) => !available.includes(f));
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={styles.heading}>Required factors</Text>
+      <Text style={styles.muted}>
+        Logging in needs this many kinds of factor: something you know, something you have, and something you are. Each step
+        uses a method of a kind not used yet.
+      </Text>
+      <View style={styles.row}>
+        {[1, 2, 3].map((n) => (
           <Button
-            label={method.kind !== 'form' ? `Link ${method.label}` : codeSentTo ? 'Verify' : `Add ${method.label}`}
-            disabled={busy || !method.isValid(value, 'signup') || (!!codeSentTo && !/^\d{6}$/.test(code))}
-            onPress={() => (method.kind !== 'form' ? onLink(method, value) : add(codeSentTo ? { code } : {}))}
+            key={n}
+            label={String(n)}
+            size="small"
+            selected={n === required}
+            disabled={n > available.length}
+            onPress={() => n !== required && onChange(n)}
+            style={{ minWidth: 48 }}
           />
-        </View>
+        ))}
+      </View>
+      {missing.length ? (
+        <Text style={styles.muted}>
+          To require more, add a method for {missing.map((f) => FACTOR_LABELS[f].toLowerCase()).join(' or ')}.
+        </Text>
       ) : null}
     </View>
   );

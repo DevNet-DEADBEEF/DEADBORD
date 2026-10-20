@@ -32,18 +32,23 @@ export function MembersPanel({ boardId }: { boardId: Id }) {
     }
   }
 
+  async function invite() {
+    if (await run(() => client.inviteMember(boardId, username.trim(), permission))) setUsername('');
+  }
+
   return (
     <View style={{ gap: 12 }}>
       <Text style={styles.heading}>Invite</Text>
-      <TextField placeholder="Username" autoCapitalize="none" maxLength={32} value={username} onChangeText={setUsername} />
-      <PermissionPicker value={permission} onChange={setPermission} />
-      <Button
-        label="Invite"
-        disabled={!username.trim()}
-        onPress={async () => {
-          if (await run(() => client.inviteMember(boardId, username.trim(), permission))) setUsername('');
-        }}
+      <TextField
+        placeholder="Username"
+        autoCapitalize="none"
+        maxLength={32}
+        value={username}
+        onChangeText={setUsername}
+        onSubmitEditing={() => username.trim() && invite()}
       />
+      <PermissionPicker value={permission} onChange={setPermission} />
+      <Button label="Invite" disabled={!username.trim()} onPress={invite} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Text style={styles.heading}>Members</Text>

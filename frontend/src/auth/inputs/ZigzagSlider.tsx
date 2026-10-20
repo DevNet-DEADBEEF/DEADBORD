@@ -6,12 +6,13 @@ import { useDrag, type DragTarget } from './useDrag';
 
 type Point = { x: number; y: number };
 
-/** Positions are 0..STEPS. */
+/** Positions run from 0 to STEPS, with DECIMALS decimal places. */
 const STEPS = 1000;
+const DECIMALS = 3;
 const ROWS = 4;
 const TEETH = 5;
 const PAD = 14;
-/** How far along the track (in steps) one drag event may move the thumb, so it can't jump between crossing loops. */
+/** How far along the track (in whole steps) one drag event may move the thumb, so it can't jump between crossing loops. */
 const WINDOW = 40;
 /** A drag must start this close (px) to the thumb. */
 const GRAB_RADIUS = 32;
@@ -83,10 +84,34 @@ const BOUNDS = UNIT_TRACK.reduce(
 
 const pathOf = (pts: Point[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('');
 
+/** The point `position` steps along the track (positions between samples are interpolated). */
+function pointAt(track: Point[], position: number): Point {
+  const i = Math.min(STEPS - 1, Math.floor(position));
+  const t = position - i;
+  return { x: track[i].x + (track[i + 1].x - track[i].x) * t, y: track[i].y + (track[i + 1].y - track[i].y) * t };
+}
+
+/** The position of the nearest point to (x, y) on segments `from`..`to` of the track. */
+function nearestPosition(track: Point[], x: number, y: number, from: number, to: number): number {
+  let best = from;
+  let bestDist = Infinity;
+  for (let i = from; i < to; i++) {
+    const a = track[i];
+    const b = track[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    const d = Math.hypot(x - (a.x + dx * t), y - (a.y + dy * t));
+    if (d < bestDist) [best, bestDist] = [i + t, d];
+  }
+  const scale = 10 ** DECIMALS;
+  return Math.round(best * scale) / scale;
+}
+
 /**
  * Login with slider: a giant, looping, zigzagging slider. Drag the thumb
- * along the track; the position is how far along it is (0-1000). The thumb
- * only follows a finger that stays on the track.
+ * along the track; the position is how far along it is (0-1000, to three
+ * decimal places). The thumb only follows a finger that stays on the track.
  */
 export function ZigzagSlider({ position, onChange }: { position: number; onChange(position: number): void }) {
   const [width, setWidth] = useState(0);
@@ -103,20 +128,16 @@ export function ZigzagSlider({ position, onChange }: { position: number; onChang
   const dragRef = useRef<DragTarget>(null);
   const drag = useDrag(dragRef, (x, y, phase) => {
     if (!track.length) return;
-    const thumb = track[position];
+    const thumb = pointAt(track, position);
     if (phase === 'start') dragging.current = Math.hypot(x - thumb.x, y - thumb.y) <= GRAB_RADIUS;
     if (!dragging.current) return;
     if (phase === 'end') dragging.current = false;
-    let best = position;
-    let bestDist = Infinity;
-    for (let i = Math.max(0, position - WINDOW); i <= Math.min(STEPS, position + WINDOW); i++) {
-      const d = Math.hypot(x - track[i].x, y - track[i].y);
-      if (d < bestDist) [best, bestDist] = [i, d];
-    }
+    const at = Math.floor(position);
+    const best = nearestPosition(track, x, y, Math.max(0, at - WINDOW), Math.min(STEPS, at + WINDOW + 1));
     if (best !== position) onChange(best);
   });
 
-  const thumb = track[position];
+  const thumb = track.length ? pointAt(track, position) : undefined;
   return (
     <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       <View ref={dragRef} {...drag} style={{ height: height || 200 }}>
@@ -124,7 +145,7 @@ export function ZigzagSlider({ position, onChange }: { position: number; onChang
           <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} pointerEvents="none">
             <Path d={full} stroke="#e2e2e2" strokeWidth={14} strokeLinecap="round" strokeLinejoin="round" fill="none" />
             <Path
-              d={pathOf(track.slice(0, position + 1))}
+              d={pathOf([...track.slice(0, Math.floor(position) + 1), thumb])}
               stroke={INK}
               strokeWidth={6}
               strokeLinecap="round"

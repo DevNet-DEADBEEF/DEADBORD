@@ -7,7 +7,7 @@ import { Button, TextField } from '@/components';
 import { DateField } from '@/DateField';
 import { toTimestamp } from '@/epoch';
 import { INK, styles } from '@/styles';
-import { dueAt, formatDue, isOverdue, type TimeOfDay } from '@/tasks';
+import { dueAt, formatDue, groupTasks, isOverdue, type TimeOfDay } from '@/tasks';
 import { TimeField } from '@/TimeField';
 import { useWorkspace } from '@/workspace/context';
 
@@ -75,7 +75,14 @@ export default function BoardPage() {
 
       {canWrite ? (
         <View style={styles.row}>
-          <TextField style={styles.grow} placeholder="New list title" maxLength={TITLE_MAX} value={listTitle} onChangeText={setListTitle} />
+          <TextField
+            style={styles.grow}
+            placeholder="New list title"
+            maxLength={TITLE_MAX}
+            value={listTitle}
+            onChangeText={setListTitle}
+            onSubmitEditing={() => listTitle.trim() && createList()}
+          />
           <Button label="Add list" disabled={!listTitle.trim()} onPress={createList} />
         </View>
       ) : null}
@@ -120,10 +127,24 @@ function ListCard({ list, canWrite, focused }: { list: List & { tasks: TaskSumma
     <View style={[styles.card, { gap: 4 }, focused && { borderColor: INK }]}>
       <Text style={[styles.heading, { marginBottom: 4 }]}>{list.title}</Text>
       {open.length === 0 ? <Text style={styles.muted}>{completed.length ? 'All done!' : 'No tasks.'}</Text> : null}
-      {open.map(row)}
+      {groupTasks(open).map((group) => (
+        <View key={group.key} style={{ gap: 2 }}>
+          <Text style={[styles.muted, { fontSize: 12, fontWeight: '600', marginTop: 6 }, group.key === 'overdue' && styles.danger]}>
+            {group.label} ({group.tasks.length})
+          </Text>
+          {group.tasks.map(row)}
+        </View>
+      ))}
       {canWrite ? (
         <View style={[styles.row, { flexWrap: 'wrap', marginTop: 4 }]}>
-          <TextField style={styles.grow} placeholder="New task" maxLength={TEXT_MAX} value={title} onChangeText={setTitle} />
+          <TextField
+            style={styles.grow}
+            placeholder="New task"
+            maxLength={TEXT_MAX}
+            value={title}
+            onChangeText={setTitle}
+            onSubmitEditing={() => title.trim() && createTask()}
+          />
           <DateField
             value={due}
             onChange={(d) => {
@@ -181,12 +202,7 @@ function TaskRow({
         style={[styles.row, { flex: 1, paddingVertical: 6, justifyContent: 'space-between' }]}
       >
         <Text style={[{ flexShrink: 1 }, task.done && [styles.muted, { textDecorationLine: 'line-through' }]]}>{task.title}</Text>
-        {task.dueDate != null ? (
-          <Text style={overdue ? styles.danger : styles.muted}>
-            {overdue ? 'Overdue · ' : ''}
-            {formatDue(task.dueDate)}
-          </Text>
-        ) : null}
+        {task.dueDate != null ? <Text style={overdue ? styles.danger : styles.muted}>{formatDue(task.dueDate)}</Text> : null}
       </Pressable>
     </View>
   );

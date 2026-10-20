@@ -36,10 +36,9 @@ export function firstDueDay(): Date {
 }
 
 /** All-day tasks are overdue once their day has passed; timed tasks once their time has. */
-export function isOverdue(task: Pick<Task, 'done' | 'dueDate'>): boolean {
+export function isOverdue(task: Pick<Task, 'done' | 'dueDate'>, now = new Date()): boolean {
   if (task.done || task.dueDate == null) return false;
   const due = fromTimestamp(task.dueDate);
-  const now = new Date();
   return timeOf(due) ? due < now : due < startOfDay(now);
 }
 
@@ -53,4 +52,61 @@ export function formatDue(ts: Timestamp): string {
 /** Overdue tasks first, then by due date; tasks with no due date last. */
 export function sortTasks<T extends Pick<Task, 'dueDate'>>(tasks: T[]): T[] {
   return [...tasks].sort((a, b) => (a.dueDate ?? Infinity) - (b.dueDate ?? Infinity));
+}
+
+/** 0 = Sunday … 6 = Saturday: the locale's first day of the week, Sunday if unknown. */
+export function firstDayOfWeek(): number {
+  try {
+    const locale = new Intl.Locale(Intl.DateTimeFormat().resolvedOptions().locale) as Intl.Locale & {
+      getWeekInfo?(): { firstDay: number };
+      weekInfo?: { firstDay: number };
+    };
+    const firstDay = (locale.getWeekInfo?.() ?? locale.weekInfo)?.firstDay;
+    // weekInfo counts Monday as 1 and Sunday as 7.
+    return firstDay ? firstDay % 7 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export type DueGroupKey = 'overdue' | 'today' | 'tomorrow' | 'thisWeek' | 'nextWeek' | 'next30' | 'later' | 'none';
+
+export const DUE_GROUP_LABELS: Record<DueGroupKey, string> = {
+  overdue: 'Overdue',
+  today: 'Today',
+  tomorrow: 'Tomorrow',
+  thisWeek: 'This week',
+  nextWeek: 'Next week',
+  next30: 'Next 30 days',
+  later: 'Far future',
+  none: 'No due date',
+};
+
+const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+
+/**
+ * Which group a task's due date falls in. Weeks are calendar weeks starting
+ * on the locale's first day; a day already in an earlier group (today,
+ * tomorrow) stays there.
+ */
+export function dueGroup(task: Pick<Task, 'done' | 'dueDate'>, now = new Date(), weekStart = firstDayOfWeek()): DueGroupKey {
+  if (task.dueDate == null) return 'none';
+  if (isOverdue(task, now)) return 'overdue';
+  const day = startOfDay(fromTimestamp(task.dueDate));
+  const today = startOfDay(now);
+  const nextWeekStart = addDays(today, 7 - ((today.getDay() - weekStart + 7) % 7));
+  if (day <= today) return 'today';
+  if (day < addDays(today, 2)) return 'tomorrow';
+  if (day < nextWeekStart) return 'thisWeek';
+  if (day < addDays(nextWeekStart, 7)) return 'nextWeek';
+  if (day <= addDays(today, 30)) return 'next30';
+  return 'later';
+}
+
+/** Tasks (already sorted) split into due-date groups, in order, leaving out empty groups. */
+export function groupTasks<T extends Pick<Task, 'done' | 'dueDate'>>(tasks: T[], now = new Date()): { key: DueGroupKey; label: string; tasks: T[] }[] {
+  const weekStart = firstDayOfWeek();
+  const groups = new Map<DueGroupKey, T[]>((Object.keys(DUE_GROUP_LABELS) as DueGroupKey[]).map((k) => [k, []]));
+  for (const task of tasks) groups.get(dueGroup(task, now, weekStart))!.push(task);
+  return [...groups].filter(([, t]) => t.length).map(([key, t]) => ({ key, label: DUE_GROUP_LABELS[key], tasks: t }));
 }

@@ -58,6 +58,20 @@ export function TaskPanel({ taskId }: { taskId: Id }) {
     setEditing(true);
   }
 
+  function save() {
+    return act(async () => {
+      await client.updateTask(taskId, { title: title.trim(), desc, dueDate: due ? toTimestamp(dueAt(due, time)) : null });
+      setEditing(false);
+    });
+  }
+
+  function postComment() {
+    return act(async () => {
+      await client.addComment(taskId, comment.trim());
+      setComment('');
+    });
+  }
+
   const status = task.done ? 'Done' : overdue ? 'Overdue' : undefined;
   const dueText = task.dueDate != null ? `Due ${formatDue(task.dueDate)}` : 'No due date';
 
@@ -65,7 +79,7 @@ export function TaskPanel({ taskId }: { taskId: Id }) {
     <View style={{ gap: 12 }}>
       {editing ? (
         <>
-          <TextField placeholder="Title" maxLength={TEXT_MAX} value={title} onChangeText={setTitle} />
+          <TextField placeholder="Title" maxLength={TEXT_MAX} value={title} onChangeText={setTitle} onSubmitEditing={() => title.trim() && save()} />
           <TextField
             placeholder="Description"
             multiline
@@ -86,16 +100,7 @@ export function TaskPanel({ taskId }: { taskId: Id }) {
             <TimeField value={time} onChange={setTime} disabled={!due} grow />
           </View>
           <View style={styles.row}>
-            <Button
-              label="Save"
-              disabled={!title.trim()}
-              onPress={() =>
-                act(async () => {
-                  await client.updateTask(taskId, { title: title.trim(), desc, dueDate: due ? toTimestamp(dueAt(due, time)) : null });
-                  setEditing(false);
-                })
-              }
-            />
+            <Button label="Save" disabled={!title.trim()} onPress={save} />
             <Button label="Cancel" onPress={() => setEditing(false)} />
           </View>
         </>
@@ -135,17 +140,15 @@ export function TaskPanel({ taskId }: { taskId: Id }) {
       ))}
       {can(role, 'read_comment') ? (
         <View style={styles.row}>
-          <TextField style={styles.grow} placeholder="Add a comment" maxLength={COMMENT_MAX} value={comment} onChangeText={setComment} />
-          <Button
-            label="Comment"
-            disabled={!comment.trim()}
-            onPress={() =>
-              act(async () => {
-                await client.addComment(taskId, comment.trim());
-                setComment('');
-              })
-            }
+          <TextField
+            style={styles.grow}
+            placeholder="Add a comment"
+            maxLength={COMMENT_MAX}
+            value={comment}
+            onChangeText={setComment}
+            onSubmitEditing={() => comment.trim() && postComment()}
           />
+          <Button label="Comment" disabled={!comment.trim()} onPress={postComment} />
         </View>
       ) : null}
     </View>
