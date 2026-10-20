@@ -14,6 +14,7 @@ import {
   type CodeSent,
 } from '@/auth/auth';
 import { CodeEntry } from '@/auth/CodeEntry';
+import { ServerSettings } from '@/auth/ServerSettings';
 import { LOGIN_METHODS, type AuthMode, type LoginMethod } from '@/auth/methods';
 import { Button, Choice, SubmitScope, TextField } from '@/components';
 import { useSession } from '@/session';
@@ -242,6 +243,7 @@ export default function LoginScreen() {
           />
         ))}
       </View>
+      <ServerSettings />
     </ScrollView>
   );
 }

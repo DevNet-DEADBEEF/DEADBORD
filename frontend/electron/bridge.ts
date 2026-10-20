@@ -6,6 +6,10 @@
 export interface DesktopBridge {
   /** Backend base URL, e.g. http://localhost:3000 (no trailing slash). */
   apiUrl: string;
+  /** The server in use, and what is saved (electron/config.ts). */
+  server: ServerInfo;
+  /** Saves which server to use and restarts the app to connect to it. Rejects with a message if invalid. */
+  setServer(settings: ServerSettings): Promise<void>;
   /**
    * Opens `url` in a login window and resolves with the URL the server
    * redirected to once it starts with `redirect`, or undefined if the user
@@ -14,6 +18,22 @@ export interface DesktopBridge {
   openAuthSession(url: string, redirect: string): Promise<string | undefined>;
   /** Runs one TDLP connection: INIT with `resources`, then every action. */
   tdlpBatch(batch: TdlpBatch): Promise<TdlpBatchResult>;
+}
+
+/** Which server to connect to, as saved in config.json. Unset TDLP fields follow the API URL's host and port 3001. */
+export interface ServerSettings {
+  apiUrl: string;
+  tdlpHost?: string;
+  tdlpPort?: number;
+}
+
+export interface ServerInfo {
+  apiUrl: string;
+  tdlpHost: string;
+  tdlpPort: number;
+  saved: ServerSettings;
+  /** Environment variables overriding the saved settings, if any; the app can't change those. */
+  overriddenBy?: string;
 }
 
 /** 0 board, 1 list, 2 task (LMP scopes). */
@@ -62,6 +82,7 @@ export type TdlpBatchResult = { error: string } | { replies: (TdlpReply | { erro
 /** IPC channels behind the bridge. */
 export const AUTH_SESSION_CHANNEL = 'auth:open-session';
 export const TDLP_BATCH_CHANNEL = 'tdlp:batch';
+export const SET_SERVER_CHANNEL = 'server:set';
 
-/** Command-line switch the main process uses to hand the API URL to the preload. */
-export const API_URL_SWITCH = '--deadbord-api-url=';
+/** Command-line switch the main process uses to hand the server (ServerInfo, URI-encoded JSON) to the preload. */
+export const SERVER_SWITCH = '--deadbord-server=';
