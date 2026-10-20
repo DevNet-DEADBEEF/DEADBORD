@@ -1,0 +1,6 @@
+{
+  "name": "@deadbord/tlon", "version": "1.0.0", "type": "module",
+  "main": "./index.js", "types": "./index.d.ts",
+  "exports": { ".": { "types": "./index.d.ts", "import": "./index.js" } },
+  "files": ["index.js", "index.d.ts"], "engines": { "node": ">=20" }
+}

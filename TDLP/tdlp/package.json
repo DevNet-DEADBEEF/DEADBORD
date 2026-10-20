@@ -1,0 +1,7 @@
+{
+  "name": "@deadbord/tdlp", "version": "1.0.0", "type": "module",
+  "main": "./index.js", "types": "./index.d.ts",
+  "exports": { ".": { "types": "./index.d.ts", "import": "./index.js" }, "./wire": { "types": "./wire.d.ts", "import": "./wire.js" } },
+  "files": ["index.js", "index.d.ts", "wire.js", "wire.d.ts"], "engines": { "node": ">=20" },
+  "dependencies": { "@deadbord/tlon": "^1.0.0", "@deadbord/lmp": "^1.0.0" }
+}

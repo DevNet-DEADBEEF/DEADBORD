@@ -1,0 +1,7 @@
+{
+  "name": "deadbord-protocols",
+  "private": true,
+  "type": "module",
+  "workspaces": ["tlon", "lmp", "tdlp"],
+  "scripts": { "test": "node --test test/protocol.test.js" }
+}
